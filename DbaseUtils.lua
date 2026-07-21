@@ -1,9 +1,9 @@
----// Utilities.lua
+---// DbaseUtils.lua
 ---// Copyright (c) 2023 Heatblur Simulations. All rights reserved.
 
 local Math = require('base.Math')
 
-local Utilities = {}
+local DbaseUtils = {}
 
 time_data = {
 	dt = s(0),
@@ -17,22 +17,22 @@ spawn_data = {
 	ins_alignment_stored = false,
 }
 
-function Utilities.Append(table, object)
+function DbaseUtils.Append(table, object)
 	table[#table+1] = object
 	return object
 end
 
-function Utilities.AppendTable(target_table, source_table)
+function DbaseUtils.AppendTable(target_table, source_table)
 	for i = 1, #source_table do
 		target_table[#target_table + 1] = source_table[i]
 	end
 end
 
-function Utilities.GetTime()
+function DbaseUtils.GetTime()
 	return time_data
 end
 
-function Utilities.GetSpawnData()
+function DbaseUtils.GetSpawnData()
 	return spawn_data
 end
 
@@ -68,7 +68,7 @@ local function DeepIterator(tbl, k)
 	return nil, nil
 end
 
-Utilities.DeepIterator = DeepIterator
+DbaseUtils.DeepIterator = DeepIterator
 
 local function DeepCopy(orig, copies)
 	copies = copies or {}
@@ -91,7 +91,7 @@ local function DeepCopy(orig, copies)
 	return copy
 end
 
-Utilities.DeepCopy = DeepCopy
+DbaseUtils.DeepCopy = DeepCopy
 
 -- https://stackoverflow.com/a/53038524
 function ArrayRemove(t, fnKeep)
@@ -113,11 +113,11 @@ function ArrayRemove(t, fnKeep)
 	return t;
 end
 
-Utilities.ArrayRemove = ArrayRemove
+DbaseUtils.ArrayRemove = ArrayRemove
 
 --IMPORTANT: Does not match the DCS strings exactly which may contain capital letters.
 --Sanitize before reading in you filthy hobbits.
-Utilities.aircraft_to_phrase_map = {
+DbaseUtils.aircraft_to_phrase_map = {
 	["a-50"] = {thatsaoran = "ThatsA", phrase = "aircraft/afifty"},
 	["an-26b"] = {thatsaoran = "ThatsA", phrase = "aircraft/antwentysix"},
 	["an-30m"] = {thatsaoran = "ThatsA", phrase = "aircraft/anthirty"},
@@ -196,6 +196,9 @@ Utilities.aircraft_to_phrase_map = {
 	["f-117a"] = {thatsaoran = "ThatsA", phrase = "aircraft/foneseventeen"},
 	["kc-10a"] = {thatsaoran = "ThatsA", phrase = "aircraft/kcten"},
 	["kc-135"] = {thatsaoran = "ThatsA", phrase = "aircraft/kconethirtyfive"},
+	["mirage-f1be"] = {thatsaoran = "ThatsA", phrase = "aircraft/mirage"},
+	["mirage-f1ce"] = {thatsaoran = "ThatsA", phrase = "aircraft/mirage"},
+	["mirage-f1ee"] = {thatsaoran = "ThatsA", phrase = "aircraft/mirage"},
 	["mirage_2000-5"] = {thatsaoran = "ThatsA", phrase = "aircraft/miragetwothousand"},
 	["m-2000c"] = {thatsaoran = "ThatsA", phrase = "aircraft/miragetwothousand"},
 	["s-3b"] = {thatsaoran = "ThatsA", phrase = "aircraft/sthree"},
@@ -209,9 +212,9 @@ Utilities.aircraft_to_phrase_map = {
 	["tf-51d"] = {thatsaoran = "ThatsA", phrase = "aircraft/pfiftyone"},
 }
 
-function Utilities.GetAircraftPhrase(aircraft)
+function DbaseUtils.GetAircraftPhrase(aircraft)
 	local ac_string = string.lower(aircraft)
-	local phrase = Utilities.aircraft_to_phrase_map[ac_string]
+	local phrase = DbaseUtils.aircraft_to_phrase_map[ac_string]
 	if phrase then
 		return phrase
 	end
@@ -268,7 +271,7 @@ o_clock_to_word_map['10'] = 'ten'
 o_clock_to_word_map['11'] = 'eleven'
 o_clock_to_word_map['12'] = 'twelve'
 
-function Utilities.AngleToOClock(angle_real)
+function DbaseUtils.AngleToOClock(angle_real)
 	local angle_deg = angle_real:ConvertTo(deg)
 	local hour = angle_deg.value / 30.0
 	local hour_string = string.format('%.0f', hour)
@@ -277,10 +280,10 @@ function Utilities.AngleToOClock(angle_real)
 end
 
 --O'Clock call from polar body and polar ned.
-function Utilities.GetOClockPhrase(polar_body, polar_ned)
+function DbaseUtils.GetOClockPhrase(polar_body, polar_ned)
 	local azimuth = polar_body.azimuth
 	local azimuth360 = Math.Wrap360(azimuth)
-	local o_clock = Utilities.AngleToOClock(azimuth360)
+	local o_clock = DbaseUtils.AngleToOClock(azimuth360)
 	local phrase = 'spotting/' .. o_clock .. 'oclock'
 	if polar_body.elevation > deg(25) and polar_ned.elevation > deg(25) then
 		phrase = phrase .. 'high'
@@ -291,7 +294,7 @@ function Utilities.GetOClockPhrase(polar_body, polar_ned)
 end
 
 --Polar ned distance to miles phrase.
-function Utilities.GetDistancePhrase(polar_ned)
+function DbaseUtils.GetDistancePhrase(polar_ned)
 	local distance = Math.Floor(polar_ned.length:ConvertTo(NM))
 	local distance_string = string.format('%.0f', distance.value)
 	local phrase = 'misc/' .. distance_string .. 'miles'
@@ -299,7 +302,7 @@ function Utilities.GetDistancePhrase(polar_ned)
 end
 
 --Safer empty table check.
-function Utilities.TableIsNotEmpty(tbl)
+function DbaseUtils.TableIsNotEmpty(tbl)
 	for _ in pairs(tbl) do
 		return true
 	end
@@ -307,7 +310,7 @@ function Utilities.TableIsNotEmpty(tbl)
 end
 
 -- Check if all passed params are a string.
-function Utilities.AreAllStrings(...)
+function DbaseUtils.AreAllStrings(...)
 	for _, v in ipairs({...}) do
 		if type(v) ~= "string" then
 			Log("This was not a string:" .. tostring(v))
@@ -317,14 +320,14 @@ function Utilities.AreAllStrings(...)
 	return true
 end
 
-function Utilities.HasElements(table)
+function DbaseUtils.HasElements(table)
 	for _ in pairs(table) do
 		return true
 	end
 	return false
 end
 
-function Utilities.NumberToText(number, misspellForty)
+function DbaseUtils.NumberToText(number, misspellForty)
 	local digits = string.format('%.0f', number)
 	local text = ''
 	local triplets = math.ceil(#digits / 3)
@@ -380,4 +383,4 @@ function Utilities.NumberToText(number, misspellForty)
 	return text
 end
 
-return Utilities
+return DbaseUtils
