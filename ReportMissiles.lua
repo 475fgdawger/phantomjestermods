@@ -24,6 +24,11 @@ local ReportMissiles = Class(Behavior)
 
 ReportMissiles.known_missiles = { }
 
+-- Jester sorts pending tasks by priority (Jester.lua). A visually-spotted
+-- incoming missile is the most urgent call-out there is, so it uses the top
+-- tier (eject / countermeasures), well above the default 0 it used before.
+ReportMissiles.priority_missile_warning = 3
+
 function ReportMissiles:Constructor()
 	Behavior.Constructor(self)
 end
@@ -119,23 +124,27 @@ function ReportMissiles:IsMissileHorizontal(missile)
     return math.abs(v_x) > v_margin.value or math.abs(v_y) > v_margin.value
 end
 
-function ReportMissiles:SayMissile(hour)
-    local task = Task:new()
-
+-- Appends the call-out to the caller's task rather than creating and queuing its
+-- own. Multiple missile warnings in one Tick then share a single task and play
+-- in order, instead of being shuffled by Jester's (non-stable) priority sort.
+-- NOTE: previously this called the global hour_to_string, which only existed
+-- because ObserveRWR leaked it; use this behavior's own HourToString method.
+function ReportMissiles:SayMissile(task, hour)
 --     task:Say('spotting/missile')
 --     task:Say('spotting/missileHI')
 --     task:Say('spotting/missilelaunch')
 --     task:Say('spotting/samlaunch')
 --     task:Say('spotting/samsamsam')
-    task:Say('spotting/missile', 'spotting/' .. hour_to_string(hour) .. 'oclock')
-
-    GetJester():AddTask(task)
-
-    CountermeasuresInteractions.StartDispensingIfAllowed()
+    task:Say('spotting/missile', 'spotting/' .. self:HourToString(hour) .. 'oclock')
 end
 
 function ReportMissiles:Tick()
     local contacts = GetJester().awareness:GetContacts()
+
+    -- One task per Tick keeps a salvo's warnings in order.
+    local task = Task:new()
+    local reported_hours = {}
+    local has_content = false
 
     for _, contact in ipairs(contacts) do
         if contact:Is(Labels.missile) then
@@ -146,10 +155,25 @@ function ReportMissiles:Tick()
 
                 if (self:IsMissileAThreat(missile)) then
                     local hour = self:AzimuthToHour(self:GetAzimuth(missile))
-                    self:SayMissile(hour)
+
+                    -- Don't say "missile three ... missile three" for two threats
+                    -- at the same clock in the same Tick. Scoped to this Tick only:
+                    -- missiles are never forgotten, so a session-wide clock filter
+                    -- would wrongly silence a later real missile at the same hour.
+                    if not reported_hours[hour] then
+                        reported_hours[hour] = true
+                        self:SayMissile(task, hour)
+                        has_content = true
+                    end
                 end
             end
         end
+    end
+
+    if has_content then
+        task:SetPriority(self.priority_missile_warning)
+        GetJester():AddTask(task)
+        CountermeasuresInteractions.StartDispensingIfAllowed()
     end
 end
 
