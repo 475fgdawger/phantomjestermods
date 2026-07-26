@@ -18,3 +18,13 @@ There are no plural type sound files so 2 aircraft of the same type in the same 
 Jester will also call fuel state occasionally if he sees a bandit and you are in afterburner.
 
 This mod is install in your Saved Games Jester mods path.
+
+
+Jester Radar Gain Toggle
+
+This mod gives the player the ability to stop Jester from adjusting Radar Gain to allow player gain control. Toggle is available via Jester Wheel.
+
+Files jester/mods/radar/Phases.lua
+      jester/mods/radar/UserActions.lua
+      jester/mods/radar/State.lua
+      jester/mods/behaviors/UpdateJesterWheel.lua
