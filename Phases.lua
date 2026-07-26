@@ -438,9 +438,13 @@ function Phases.AdjustGain()
 		-- Reset for a general scan and adjustment
 		interest_range = nil
 	end
-	SetRadarClutterInterestRange(interest_range)
-
-	RadarAdjustGain()
+	-- Gain adjustment is gated behind a toggle (default on). Turn it off via the
+	-- "radar_auto_gain" event / Radar wheel "Auto Gain" item to have Jester leave
+	-- the radar gain and clutter interest range alone.
+	if State.is_auto_gain_allowed then
+		SetRadarClutterInterestRange(interest_range)
+		RadarAdjustGain()
+	end
 	return nil
 end
 
