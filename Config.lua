@@ -176,6 +176,7 @@ Config.SEARCH_GAIN_START = 0.8
 Config.SEARCH_GAIN_MIN = 0.5
 Config.SEARCH_GAIN_STEP = 0.05
 Config.SEARCH_GAIN_LONG_RANGES = { -- display ranges at which the gain hunt runs
+	[Config.range.nm_25] = true,
 	[Config.range.nm_50] = true,
 	[Config.range.nm_100] = true,
 	[Config.range.nm_200] = true,
