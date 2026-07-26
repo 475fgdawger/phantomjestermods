@@ -398,7 +398,7 @@ ListenTo("radar_auto_gain", "RadarUserActions", function(task, mode)
 	else -- "toggle" or nil
 		State.is_auto_gain_allowed = not State.is_auto_gain_allowed
 	end
-	Log("Jester Radar | auto gain allowed: " .. tostring(State.is_auto_gain_allowed))
+	Log("Jester Radar | radar_auto_gain event: requested '" .. tostring(mode) .. "' -> is_auto_gain_allowed = " .. tostring(State.is_auto_gain_allowed))
 end)
 
 ListenTo("radar_scan_zone", "RadarUserActions", function(task, zone)

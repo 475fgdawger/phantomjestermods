@@ -12,6 +12,11 @@ local BraCalls = require('other.BraCalls')
 
 local Phases = {}
 
+-- Testing: remember the last-logged auto-gain gate state so AdjustGain logs only
+-- when it flips (ON<->OFF) instead of every radar cycle. Also fires on the first
+-- call, confirming the default state.
+local last_logged_auto_gain = nil
+
 function Phases.HandleTargetLocking()
 	local task = Task:new()
 	task:SetPriority(1)
@@ -441,6 +446,10 @@ function Phases.AdjustGain()
 	-- Gain adjustment is gated behind a toggle (default on). Turn it off via the
 	-- "radar_auto_gain" event / Radar wheel "Auto Gain" item to have Jester leave
 	-- the radar gain and clutter interest range alone.
+	if State.is_auto_gain_allowed ~= last_logged_auto_gain then
+		Log("Jester Radar | AdjustGain gate: auto gain " .. (State.is_auto_gain_allowed and "ON (adjusting gain)" or "OFF (skipping gain)"))
+		last_logged_auto_gain = State.is_auto_gain_allowed
+	end
 	if State.is_auto_gain_allowed then
 		SetRadarClutterInterestRange(interest_range)
 		RadarAdjustGain()

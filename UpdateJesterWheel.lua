@@ -1499,6 +1499,7 @@ function UpdateJesterWheel:UpdateRadarAutoGain()
 			}),
 		}), location)
 		self.auto_gain_added = true
+		Log("Jester Radar | Auto Gain wheel item added (default is_auto_gain_allowed = " .. tostring(RadarState.is_auto_gain_allowed) .. ")")
 	end
 
 	local state_text = RadarState.is_auto_gain_allowed and "Currently: ON" or "Currently: OFF"
