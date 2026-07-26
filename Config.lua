@@ -167,19 +167,23 @@ Config.NAILS_SEARCH_ELEVATION_SWEEP = ft(20000) -- +/- relative altitude used to
 Config.NAILS_SEARCH_AZIMUTH_TOLERANCE = deg(20) -- contact must be within this of the bearing to count
 Config.NAILS_SEARCH_MIN_HITS = 2                -- radar hits before a contact is considered lockable
 
--- Normal-search gain hunt: while free-scanning at longer display ranges, Jester walks
--- the coarse gain down from SEARCH_GAIN_START to SEARCH_GAIN_MIN (one step per scan
--- cycle) then resets to the top, surfacing weak/distant returns a fixed gain misses.
--- Gated by the auto-gain toggle (State.is_auto_gain_allowed); see Phases.AdjustGain.
--- Add shorter ranges to SEARCH_GAIN_LONG_RANGES if you want the hunt closer in.
+-- Normal-search range sweep + gain hunt. While free-scanning, Jester works down a
+-- ladder of display ranges (SEARCH_RANGE_LADDER) using the pilot's selected range as
+-- the MAX: he starts there, walks coarse gain down from SEARCH_GAIN_START to
+-- SEARCH_GAIN_MIN (one step per scan cycle), then steps to the next shorter range and
+-- repeats, restarting at the max once he passes the last entry (25 nm). This surfaces
+-- weak/distant returns a fixed gain/range misses. Gated by the auto-gain toggle
+-- (State.is_auto_gain_allowed); see Phases.AdjustGain / GetSearchRange.
 Config.SEARCH_GAIN_START = 0.8
 Config.SEARCH_GAIN_MIN = 0.5
 Config.SEARCH_GAIN_STEP = 0.05
-Config.SEARCH_GAIN_LONG_RANGES = { -- display ranges at which the gain hunt runs
-	[Config.range.nm_25] = true,
-	[Config.range.nm_50] = true,
-	[Config.range.nm_100] = true,
-	[Config.range.nm_200] = true,
+-- Descending ladder of the ranges the sweep/gain-hunt run at. The pilot's range is
+-- the sweep ceiling; ranges not listed (5/10 nm) get the backend gain and no sweep.
+Config.SEARCH_RANGE_LADDER = {
+	Config.range.nm_200,
+	Config.range.nm_100,
+	Config.range.nm_50,
+	Config.range.nm_25,
 }
 
 return Config

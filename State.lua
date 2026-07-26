@@ -41,6 +41,7 @@ State.nails_search_gain = nil -- current coarse gain during the gain-walk (nil u
 State.nails_search_sweep_up = true -- elevation sweep direction toggle, flipped each dwell step
 
 State.search_gain = nil -- current coarse gain during the normal-search gain hunt (see Phases.AdjustGain)
+State.search_range = nil -- current display range within the normal-search range sweep (nil = follow pilot_requested_range)
 
 State.last_iff_timestamp = s(0) -- timestamp the last IFF was executed, in order to not spam it
 
@@ -92,6 +93,7 @@ function State.Reset()
 	State.nails_search_gain = nil
 	State.nails_search_sweep_up = true
 	State.search_gain = nil
+	State.search_range = nil
 
 	State.time_spent_trying_to_lock_bandit = s(0)
 	State.wrong_lock_attempts = 0

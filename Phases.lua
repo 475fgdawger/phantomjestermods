@@ -254,6 +254,47 @@ function Phases.HandleNailsSearch()
 	           :Wait(Config.NAILS_SEARCH_DWELL)
 end
 
+-- Position of a display range in the descending SEARCH_RANGE_LADDER, or nil if the
+-- range isn't part of the sweep (e.g. 5/10 nm).
+local function ladder_index(range)
+	for i, r in ipairs(Config.SEARCH_RANGE_LADDER) do
+		if r == range then
+			return i
+		end
+	end
+	return nil
+end
+
+-- The pilot's selected range is the sweep MAX; Jester works down the ladder from
+-- there to 25 nm and restarts. Returns the display range to scan at, initialising or
+-- clamping the sweep as needed. A non-swept pilot range (5/10 nm) is used directly.
+function Phases.GetSearchRange()
+	local max_idx = ladder_index(State.pilot_requested_range)
+	if not max_idx then
+		State.search_range = nil
+		return State.pilot_requested_range
+	end
+	local cur_idx = State.search_range and ladder_index(State.search_range)
+	if not cur_idx or cur_idx < max_idx then
+		State.search_range = State.pilot_requested_range -- (re)start at the pilot's max range
+	end
+	return State.search_range
+end
+
+-- Step the sweep one range shorter; restart at the pilot's max range past 25 nm.
+function Phases.AdvanceSearchRange()
+	local max_idx = ladder_index(State.pilot_requested_range)
+	if not max_idx then
+		return
+	end
+	local cur_idx = (State.search_range and ladder_index(State.search_range)) or max_idx
+	if cur_idx >= #Config.SEARCH_RANGE_LADDER then
+		State.search_range = State.pilot_requested_range
+	else
+		State.search_range = Config.SEARCH_RANGE_LADDER[cur_idx + 1]
+	end
+end
+
 function Phases.PrepareScanPattern()
 	local task = Task:new():Click("Radar Mode", Config.mode.map)
 	                 :Click("Radar Maneuver", "high")
@@ -264,7 +305,7 @@ function Phases.PrepareScanPattern()
 		Api.SelectRangeFor(task, State.target_to_focus_on.scan_range:ConvertTo(NM))
 	else
 		task:Click("Radar Scan Type", State.pilot_requested_scan_type)
-		    :Click("Radar Range", State.pilot_requested_range)
+		    :Click("Radar Range", Phases.GetSearchRange())
 	end
 	if Api.IsInTrackState() then
 		Api.UnlockTarget(task)
@@ -355,7 +396,7 @@ function Phases.AdjustScreen()
 	local task = Task:new()
 
 	if State.target_to_highlight == nil and State.target_to_focus_on == nil then
-		task:ClickFast("Radar Range", State.pilot_requested_range)
+		task:ClickFast("Radar Range", Phases.GetSearchRange())
 	else
 		local target = State.target_to_focus_on or State.target_to_highlight
 		Api.SelectRangeFor(task, target.scan_range:ConvertTo(NM))
@@ -533,14 +574,18 @@ function Phases.AdjustGain()
 		return nil
 	end
 
-	-- At longer display ranges (and not focusing a target), hunt for contacts by
-	-- walking coarse gain down from SEARCH_GAIN_START to SEARCH_GAIN_MIN, one step per
-	-- scan cycle, then resetting to the top. Same technique as the nails search.
-	local display_range = State.pilot_requested_range
-	if not State.target_to_focus_on and display_range and Config.SEARCH_GAIN_LONG_RANGES[display_range] then
-		if State.search_gain == nil or State.search_gain <= Config.SEARCH_GAIN_MIN then
+	-- Range sweep + gain hunt (see Config). At each swept range Jester walks coarse
+	-- gain down from SEARCH_GAIN_START to SEARCH_GAIN_MIN, one step per scan cycle;
+	-- when a full gain sweep completes he steps the display range one shorter and
+	-- restarts the gain walk, restarting the whole ladder once past 25 nm.
+	local display_range = Phases.GetSearchRange()
+	if not State.target_to_focus_on and ladder_index(display_range) then
+		if State.search_gain == nil then
+			State.search_gain = Config.SEARCH_GAIN_START -- first step at the current range
+		elseif State.search_gain <= Config.SEARCH_GAIN_MIN then
 			State.search_gain = Config.SEARCH_GAIN_START
-			Log("Jester Radar | search gain hunt: restart walk at " .. tostring(State.search_gain) .. " (range " .. tostring(display_range) .. ")")
+			Phases.AdvanceSearchRange() -- finished a gain sweep here; step to the next range
+			Log("Jester Radar | search sweep: range " .. tostring(State.search_range) .. ", gain walk restart at " .. tostring(State.search_gain))
 		else
 			State.search_gain = State.search_gain - Config.SEARCH_GAIN_STEP
 		end
