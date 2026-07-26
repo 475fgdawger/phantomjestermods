@@ -14,6 +14,7 @@ local SayTask = require('tasks.common.SayTask')
 local Utilities = require('base.Utilities')
 local Task = require('base.Task')
 local CountermeasuresInteractions = require('tasks.common.CountermeasuresInteractions')
+require('base.Interactions') -- for Dispatch (radar_nails_search)
 
 local ObserveRWR = Class(Behavior)
 ObserveRWR.known_contacts = { }
@@ -208,6 +209,12 @@ function ObserveRWR:ReportNewContact(task, category_1, category_2, type_1, type_
 
 	if category_1 == 'airborne' then
         reported = self:SayNails(task, hour, subsequent)
+        -- Forward-arc nails (10-2 o'clock): ask the radar to search that bearing.
+        -- The radar side (UserActions "radar_nails_search") only acts while free-scanning.
+        local h = tonumber(hour)
+        if h == 10 or h == 11 or h == 12 or h == 1 or h == 2 then
+            Dispatch("radar_nails_search", tostring(h))
+        end
     elseif category_1 == 'surface' then
         reported = self:SayMud(task, hour, type_1, type_2, subsequent)
     else

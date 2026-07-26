@@ -478,4 +478,34 @@ ListenTo("radar_unlock_tgt", "RadarUserActions", function(task)
   end
 end)
 
+-- Directed nails-search: a forward-arc nails was detected (dispatched from ObserveRWR).
+-- Only start while free-scanning (no lock/focus/track) and powered - never interrupt
+-- an engagement.
+ListenTo("radar_nails_search", "RadarNailsSearch", function(task, hour_str)
+	if not State.is_active or not Api.IsPowered() then
+		return
+	end
+	if Api.IsInTrackState()
+			or State.target_to_lock ~= nil
+			or State.target_currently_locked ~= nil
+			or State.target_to_focus_on ~= nil then
+		return -- busy locking/focusing, don't interrupt
+	end
+	if State.nails_search_active then
+		return -- already searching
+	end
+
+	local hour = tonumber(hour_str)
+	local azimuth = hour and Config.NAILS_SEARCH_HOUR_AZIMUTH[hour]
+	if not azimuth then
+		return -- not a forward-arc hour we can search
+	end
+
+	State.nails_search_active = true
+	State.nails_search_azimuth = azimuth
+	State.nails_search_gain = nil -- forces one-time setup on first phase entry
+	State.nails_search_sweep_up = true
+	Log("Jester Radar | Nails search requested at " .. tostring(hour) .. " o'clock (az " .. tostring(azimuth) .. ")")
+end)
+
 return UserActions

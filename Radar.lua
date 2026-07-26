@@ -178,6 +178,12 @@ function Radar.UpdateTargetData()
 end
 
 function Radar.UpdateTargetHighlight()
+	-- While a directed nails-search owns the antenna, leave the cursor/highlight alone
+	-- (otherwise this would clear the aim point and run auto-focus every tick).
+	if State.nails_search_active then
+		return
+	end
+
 	local move_radar_cursor = GetJester().behaviors[MoveRadarCursor]
 	local move_radar_antenna = GetJester().behaviors[MoveRadarAntenna]
 
@@ -257,6 +263,12 @@ function Radar.FindNextPhase()
 	if is_locking_target then
 		--Log("HANDLE_TARGET_LOCKING")
 		return Phases.HandleTargetLocking(), Config.phase.HANDLE_TARGET_LOCKING
+	end
+
+	-- Directed nails-search takes priority over the normal scan cycle (but yields to
+	-- locking above, so a resolved contact is picked up as a lock on the next tick).
+	if State.nails_search_active then
+		return Phases.HandleNailsSearch(), Config.phase.HANDLE_NAILS_SEARCH
 	end
 
 	-- Prepare Scan Pattern

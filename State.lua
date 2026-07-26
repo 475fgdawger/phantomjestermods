@@ -33,6 +33,13 @@ State.target_to_focus_on = nil -- if set, the given target will be focused (must
 State.target_to_lock = nil -- if set, the given target will be locked (must be set with State.target_to_highlight and State.target_to_focus_on)
 State.target_currently_locked = nil -- if set, Jester knows that a target is currently locked; controls if he will still attempt locking or instead hold the lock
 
+-- Nails Search state (see Phases.HandleNailsSearch). Set by the "radar_nails_search"
+-- event handler in UserActions.lua when a forward-arc nails is detected while free-scanning.
+State.nails_search_active = false -- whether a directed nails-search is currently running
+State.nails_search_azimuth = nil -- antenna azimuth (deg) of the nails bearing being searched
+State.nails_search_gain = nil -- current coarse gain during the gain-walk (nil until setup runs)
+State.nails_search_sweep_up = true -- elevation sweep direction toggle, flipped each dwell step
+
 State.last_iff_timestamp = s(0) -- timestamp the last IFF was executed, in order to not spam it
 
 State.time_spent_trying_to_lock_bandit = s(0) -- in order to eventually give up if a bandit dropped from the screen
@@ -76,6 +83,12 @@ function State.Reset()
 	State.target_to_focus_on = nil
 	State.target_to_lock = nil
 	State.target_currently_locked = nil
+
+	-- Abort any directed nails-search on reset.
+	State.nails_search_active = false
+	State.nails_search_azimuth = nil
+	State.nails_search_gain = nil
+	State.nails_search_sweep_up = true
 
 	State.time_spent_trying_to_lock_bandit = s(0)
 	State.wrong_lock_attempts = 0

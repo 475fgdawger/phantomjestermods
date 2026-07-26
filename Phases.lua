@@ -168,6 +168,92 @@ function Phases.HandleTargetLocking()
 	end
 end
 
+-- Returns a still-fresh radar contact within the azimuth tolerance of the searched
+-- bearing that has enough hits to be worth locking, or nil.
+local function FindLockableContactNearAzimuth(azimuth)
+	local best_target = nil
+	local best_diff = nil
+	for id, target in pairs(radar_targets or {}) do
+		local hits = target.number_of_hits or 0
+		if hits >= Config.NAILS_SEARCH_MIN_HITS and not target.found_in_acq_or_trk and IsObjectWithIdAlive(id) then
+			local az_diff = Math.Abs(target.scan_azimuth:ConvertTo(deg) - azimuth:ConvertTo(deg))
+			if az_diff < Config.NAILS_SEARCH_AZIMUTH_TOLERANCE and (best_diff == nil or az_diff < best_diff) then
+				best_target = target
+				best_diff = az_diff
+			end
+		end
+	end
+	return best_target
+end
+
+-- Directed search triggered by a forward-arc "nails" (see ObserveRWR / UserActions
+-- "radar_nails_search"). Dwells on the nails bearing, sweeps antenna elevation, and
+-- walks coarse gain down from max. If a lockable contact resolves at the bearing it
+-- hands off to HANDLE_TARGET_LOCKING (auto-lock); if gain reaches the floor with
+-- nothing found it gives up and resumes the normal scan. Invoked once per dwell step
+-- (each returned task waits NAILS_SEARCH_DWELL before the next step).
+function Phases.HandleNailsSearch()
+	local task = Task:new()
+	task:SetPriority(1)
+
+	local move_radar_cursor = GetJester().behaviors[MoveRadarCursor]
+	local move_radar_antenna = GetJester().behaviors[MoveRadarAntenna]
+	local azimuth = State.nails_search_azimuth or deg(0)
+
+	-- Resolved a lockable contact at the bearing? Hand off to the lock flow.
+	local target = FindLockableContactNearAzimuth(azimuth)
+	if target then
+		Log("Jester Radar | Nails search: resolved contact " .. tostring(target.id) .. " -> locking")
+		State.nails_search_active = false
+		State.nails_search_gain = nil
+
+		State.target_to_highlight = target
+		State.pilot_requested_target_to_highlight = target
+		State.target_to_focus_on = target
+		State.target_to_lock = target
+		move_radar_cursor:FollowTarget(target)
+		move_radar_antenna:FollowTarget(target)
+		return task -- next tick FindNextPhase enters HANDLE_TARGET_LOCKING
+	end
+
+	local is_setup = State.nails_search_gain == nil
+	if is_setup then
+		-- One-time setup for this search: narrow scan, search display range, gain at max.
+		State.nails_search_gain = Config.NAILS_SEARCH_GAIN_START
+		State.nails_search_sweep_up = true
+		Log("Jester Radar | Nails search: begin at azimuth " .. tostring(azimuth) .. ", gain " .. tostring(State.nails_search_gain))
+		task:ClickFast("Radar Scan Type", Config.scan_type.narrow, true)
+		    :ClickFast("Radar Range", Config.NAILS_SEARCH_DISPLAY_RANGE, true)
+	else
+		-- Walked gain to the floor without resolving anything? Give up, resume scan.
+		if State.nails_search_gain <= Config.NAILS_SEARCH_GAIN_MIN then
+			Log("Jester Radar | Nails search: gain floor reached, nothing lockable - resuming scan")
+			State.nails_search_active = false
+			State.nails_search_gain = nil
+			State.current_scan_zone = nil -- forces PREPARE_SCAN_PATTERN next
+			move_radar_cursor:ClearTarget()
+			move_radar_antenna:ClearTarget()
+			return task:ClickFast("Radar Gain Coarse", Config.NAILS_SEARCH_GAIN_MIN, true)
+			           :Say("radar/returningtoscan")
+		end
+		-- Step gain down for this dwell.
+		State.nails_search_gain = State.nails_search_gain - Config.NAILS_SEARCH_GAIN_STEP
+	end
+
+	-- Aim azimuth via the acquisition-gate cursor; sweep elevation via the antenna wheel.
+	local sweep_altitude = Config.NAILS_SEARCH_ELEVATION_SWEEP
+	if not State.nails_search_sweep_up then
+		sweep_altitude = ft(0) - Config.NAILS_SEARCH_ELEVATION_SWEEP
+	end
+	State.nails_search_sweep_up = not State.nails_search_sweep_up
+
+	move_radar_cursor:MoveCursorTo(azimuth, Config.NAILS_SEARCH_AIM_RANGE)
+	move_radar_antenna:MoveAntennaTo(Config.NAILS_SEARCH_AIM_RANGE, sweep_altitude, true)
+
+	return task:ClickFast("Radar Gain Coarse", State.nails_search_gain, true)
+	           :Wait(Config.NAILS_SEARCH_DWELL)
+end
+
 function Phases.PrepareScanPattern()
 	local task = Task:new():Click("Radar Mode", Config.mode.map)
 	                 :Click("Radar Maneuver", "high")
