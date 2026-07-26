@@ -50,6 +50,11 @@ local Constants = require('base.Constants')
 -- All contact data is constantly updated with the master data from radar_targets in each tick.
 local Radar = {}
 
+-- One-shot: guarantee auto-focus is enabled when the radar starts, so the pilot
+-- never has to turn it on. Applied once in Radar.Tick; the pilot can still toggle
+-- it off afterwards via the Radar wheel / radar_auto_focus.
+local forced_auto_focus_on = false
+
 function Radar.UpdateDiveToss()
 	local move_radar_cursor = GetJester().behaviors[MoveRadarCursor]
 
@@ -310,6 +315,11 @@ function Radar.FindNextPhase()
 end
 
 function Radar.Tick()
+	if not forced_auto_focus_on then
+		State.is_auto_focus_allowed = true
+		forced_auto_focus_on = true
+	end
+
 	Routines.forget_old_targets:Tick()
 	Routines.update_targets_priority:Tick()
 	Routines.update_close_bandit_awareness:Tick()
