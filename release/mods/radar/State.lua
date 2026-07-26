@@ -40,6 +40,8 @@ State.nails_search_azimuth = nil -- antenna azimuth (deg) of the nails bearing b
 State.nails_search_gain = nil -- current coarse gain during the gain-walk (nil until setup runs)
 State.nails_search_sweep_up = true -- elevation sweep direction toggle, flipped each dwell step
 
+State.search_gain = nil -- current coarse gain during the normal-search gain hunt (see Phases.AdjustGain)
+
 State.last_iff_timestamp = s(0) -- timestamp the last IFF was executed, in order to not spam it
 
 State.time_spent_trying_to_lock_bandit = s(0) -- in order to eventually give up if a bandit dropped from the screen
@@ -89,6 +91,7 @@ function State.Reset()
 	State.nails_search_azimuth = nil
 	State.nails_search_gain = nil
 	State.nails_search_sweep_up = true
+	State.search_gain = nil
 
 	State.time_spent_trying_to_lock_bandit = s(0)
 	State.wrong_lock_attempts = 0

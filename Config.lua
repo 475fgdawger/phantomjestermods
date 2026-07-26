@@ -157,7 +157,7 @@ Config.NAILS_SEARCH_HOUR_AZIMUTH = { -- forward-arc clock hours -> antenna azimu
 	[1]  = deg(30),
 	[2]  = deg(60),
 }
-Config.NAILS_SEARCH_GAIN_START = 1.0            -- coarse gain to begin the walk (max)
+Config.NAILS_SEARCH_GAIN_START = 0.8            -- coarse gain to begin the walk (max)
 Config.NAILS_SEARCH_GAIN_MIN = 0.5              -- coarse gain floor; give up here
 Config.NAILS_SEARCH_GAIN_STEP = 0.05           -- coarse gain drop per dwell step
 Config.NAILS_SEARCH_DWELL = s(2.5)             -- dwell time at each gain step
@@ -166,5 +166,19 @@ Config.NAILS_SEARCH_AIM_RANGE = NM(25)         -- range used to aim the acquisit
 Config.NAILS_SEARCH_ELEVATION_SWEEP = ft(20000) -- +/- relative altitude used to sweep elevation
 Config.NAILS_SEARCH_AZIMUTH_TOLERANCE = deg(20) -- contact must be within this of the bearing to count
 Config.NAILS_SEARCH_MIN_HITS = 2                -- radar hits before a contact is considered lockable
+
+-- Normal-search gain hunt: while free-scanning at longer display ranges, Jester walks
+-- the coarse gain down from SEARCH_GAIN_START to SEARCH_GAIN_MIN (one step per scan
+-- cycle) then resets to the top, surfacing weak/distant returns a fixed gain misses.
+-- Gated by the auto-gain toggle (State.is_auto_gain_allowed); see Phases.AdjustGain.
+-- Add shorter ranges to SEARCH_GAIN_LONG_RANGES if you want the hunt closer in.
+Config.SEARCH_GAIN_START = 0.8
+Config.SEARCH_GAIN_MIN = 0.5
+Config.SEARCH_GAIN_STEP = 0.05
+Config.SEARCH_GAIN_LONG_RANGES = { -- display ranges at which the gain hunt runs
+	[Config.range.nm_50] = true,
+	[Config.range.nm_100] = true,
+	[Config.range.nm_200] = true,
+}
 
 return Config

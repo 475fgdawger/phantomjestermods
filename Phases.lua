@@ -521,14 +521,6 @@ function Phases.AdjustGain()
 		State.pilot_requested_scan_zone = nil
 	end
 
-	-- Gain adjustment is handled on the backend
-	local interest_range
-	if State.target_to_focus_on then
-		interest_range = State.target_to_focus_on.scan_range
-	else
-		-- Reset for a general scan and adjustment
-		interest_range = nil
-	end
 	-- Gain adjustment is gated behind a toggle (default on). Turn it off via the
 	-- "radar_auto_gain" event / Radar wheel "Auto Gain" item to have Jester leave
 	-- the radar gain and clutter interest range alone.
@@ -536,10 +528,35 @@ function Phases.AdjustGain()
 		Log("Jester Radar | AdjustGain gate: auto gain " .. (State.is_auto_gain_allowed and "ON (adjusting gain)" or "OFF (skipping gain)"))
 		last_logged_auto_gain = State.is_auto_gain_allowed
 	end
-	if State.is_auto_gain_allowed then
-		SetRadarClutterInterestRange(interest_range)
-		RadarAdjustGain()
+	if not State.is_auto_gain_allowed then
+		State.search_gain = nil
+		return nil
 	end
+
+	-- At longer display ranges (and not focusing a target), hunt for contacts by
+	-- walking coarse gain down from SEARCH_GAIN_START to SEARCH_GAIN_MIN, one step per
+	-- scan cycle, then resetting to the top. Same technique as the nails search.
+	local display_range = State.pilot_requested_range
+	if not State.target_to_focus_on and display_range and Config.SEARCH_GAIN_LONG_RANGES[display_range] then
+		if State.search_gain == nil or State.search_gain <= Config.SEARCH_GAIN_MIN then
+			State.search_gain = Config.SEARCH_GAIN_START
+			Log("Jester Radar | search gain hunt: restart walk at " .. tostring(State.search_gain) .. " (range " .. tostring(display_range) .. ")")
+		else
+			State.search_gain = State.search_gain - Config.SEARCH_GAIN_STEP
+		end
+		local task = Task:new()
+		task:SetPriority(1)
+		return task:ClickFast("Radar Gain Coarse", State.search_gain, true)
+	end
+
+	-- Short range (or focusing a target): fall back to the backend gain adjustment.
+	State.search_gain = nil
+	local interest_range
+	if State.target_to_focus_on then
+		interest_range = State.target_to_focus_on.scan_range
+	end
+	SetRadarClutterInterestRange(interest_range)
+	RadarAdjustGain()
 	return nil
 end
 
