@@ -192,10 +192,11 @@ Config.SEARCH_RANGE_LADDER = {
 -- not waste sweeps looking into the ground.
 Config.SKIP_DOWN_BELOW_ALTITUDE = ft(5000)
 
--- Elevation zone order (references into Config.scan_zone). The default cycle, and a
--- top-down sweep (highest first, then work down and repeat) used when searching at
--- 25 nm. The below-level zones are dropped from either when flying below the
--- altitude threshold above.
+-- Elevation zone order. SCAN_ZONE_SEQUENCE_DEFAULT is the normal cycle (used at
+-- 50/100/200 nm). At 25 nm Jester instead runs SCAN_ZONE_SEQUENCE_25NM: a manual
+-- top-down bar scan from +30,000 ft down to -5,000 ft, referenced at 30 nm. In both,
+-- the below-CENTER bars are dropped when flying at/below SKIP_DOWN_BELOW_ALTITUDE, so
+-- he stops at CENTER (0 ft) and never scans into the ground.
 Config.SCAN_ZONE_SEQUENCE_DEFAULT = {
 	Config.scan_zone.CENTER_DOWNSTREAM_1,
 	Config.scan_zone.CENTER_DOWNSTREAM_2,
@@ -206,12 +207,18 @@ Config.SCAN_ZONE_SEQUENCE_DEFAULT = {
 	Config.scan_zone.SLIGHTLY_BELOW,
 	Config.scan_zone.HIGH,
 }
-Config.SCAN_ZONE_SEQUENCE_TOPDOWN = {
-	Config.scan_zone.HIGH,
-	Config.scan_zone.SLIGHTLY_ABOVE,
-	Config.scan_zone.CENTER_DOWNSTREAM_1,
-	Config.scan_zone.SLIGHTLY_BELOW,
-	Config.scan_zone.LOW,
+-- 25 nm manual bar scan: +30,000 ft -> -5,000 ft in 5,000 ft steps (~1.6 deg each at
+-- 30 nm), referenced at 30 nm per request. Edit the altitudes/step to taste.
+local nm25_ref = NM(30)
+Config.SCAN_ZONE_SEQUENCE_25NM = {
+	{ name = "25NM_UP_30K",  range = nm25_ref, altitude = ft(30000),  is_relative = true },
+	{ name = "25NM_UP_25K",  range = nm25_ref, altitude = ft(25000),  is_relative = true },
+	{ name = "25NM_UP_20K",  range = nm25_ref, altitude = ft(20000),  is_relative = true },
+	{ name = "25NM_UP_15K",  range = nm25_ref, altitude = ft(15000),  is_relative = true },
+	{ name = "25NM_UP_10K",  range = nm25_ref, altitude = ft(10000),  is_relative = true },
+	{ name = "25NM_UP_5K",   range = nm25_ref, altitude = ft(5000),   is_relative = true },
+	{ name = "25NM_CENTER",  range = nm25_ref, altitude = ft(0),      is_relative = true },
+	{ name = "25NM_DOWN_5K", range = nm25_ref, altitude = ft(-5000),  is_relative = true },
 }
 
 return Config

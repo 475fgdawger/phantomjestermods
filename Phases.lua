@@ -321,18 +321,22 @@ local function elevation_zone_sequence()
 	local display_range = State.search_range or State.pilot_requested_range
 	local seq = Config.SCAN_ZONE_SEQUENCE_DEFAULT
 	if display_range == Config.range.nm_25 then
-		seq = Config.SCAN_ZONE_SEQUENCE_TOPDOWN
+		seq = Config.SCAN_ZONE_SEQUENCE_25NM
 	end
 
 	local own_altitude = GetJester().awareness:GetObservation("barometric_altitude")
-	local is_low = own_altitude and own_altitude:ConvertTo(ft) < Config.SKIP_DOWN_BELOW_ALTITUDE
+	local low_threshold = Config.SKIP_DOWN_BELOW_ALTITUDE:ConvertTo(ft).value
+	local is_low = own_altitude and own_altitude:ConvertTo(ft).value <= low_threshold
 	if not is_low then
 		return seq
 	end
 
+	-- At/below the low-altitude threshold: drop every below-CENTER bar so Jester stops
+	-- at CENTER (0 ft) and never scans into the ground.
 	local filtered = {}
 	for _, zone in ipairs(seq) do
-		if zone ~= Config.scan_zone.LOW and zone ~= Config.scan_zone.SLIGHTLY_BELOW then
+		local is_below_center = zone.is_relative and zone.altitude and zone.altitude:ConvertTo(ft).value < 0
+		if not is_below_center then
 			filtered[#filtered + 1] = zone
 		end
 	end
