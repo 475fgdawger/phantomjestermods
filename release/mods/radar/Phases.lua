@@ -313,6 +313,32 @@ function Phases.PrepareScanPattern()
 	return task
 end
 
+-- Build the elevation-zone order for the current situation: a top-down sweep at
+-- 25 nm, otherwise the default cycle; with the below-level zones (LOW / SLIGHTLY_BELOW)
+-- removed when flying below Config.SKIP_DOWN_BELOW_ALTITUDE (barometric MSL - Jester
+-- has no true AGL).
+local function elevation_zone_sequence()
+	local display_range = State.search_range or State.pilot_requested_range
+	local seq = Config.SCAN_ZONE_SEQUENCE_DEFAULT
+	if display_range == Config.range.nm_25 then
+		seq = Config.SCAN_ZONE_SEQUENCE_TOPDOWN
+	end
+
+	local own_altitude = GetJester().awareness:GetObservation("barometric_altitude")
+	local is_low = own_altitude and own_altitude:ConvertTo(ft) < Config.SKIP_DOWN_BELOW_ALTITUDE
+	if not is_low then
+		return seq
+	end
+
+	local filtered = {}
+	for _, zone in ipairs(seq) do
+		if zone ~= Config.scan_zone.LOW and zone ~= Config.scan_zone.SLIGHTLY_BELOW then
+			filtered[#filtered + 1] = zone
+		end
+	end
+	return filtered
+end
+
 function Phases.ComputeNextScanZone()
 	if State.pilot_requested_scan_zone ~= nil then
 		State.max_scan_time_for_zone_no_bandits = Config.MAX_FOCUS_ZONE_SCAN_TIME
@@ -322,25 +348,19 @@ function Phases.ComputeNextScanZone()
 		return Config.scan_zone.TARGET_FOCUS
 	end
 
-	local next_zone = Config.scan_zone.CENTER_DOWNSTREAM_1
-	if State.current_scan_zone == nil or State.current_scan_zone == Config.scan_zone.HIGH then
-		next_zone = Config.scan_zone.CENTER_DOWNSTREAM_1
-	elseif State.current_scan_zone == Config.scan_zone.CENTER_DOWNSTREAM_1 then
-		next_zone = Config.scan_zone.CENTER_DOWNSTREAM_2
-	elseif State.current_scan_zone == Config.scan_zone.CENTER_DOWNSTREAM_2 then
-		next_zone = Config.scan_zone.SLIGHTLY_ABOVE
-	elseif State.current_scan_zone == Config.scan_zone.SLIGHTLY_ABOVE then
-		next_zone = Config.scan_zone.LOW
-	elseif State.current_scan_zone == Config.scan_zone.LOW then
-		next_zone = Config.scan_zone.CENTER_UPSTREAM_1
-	elseif State.current_scan_zone == Config.scan_zone.CENTER_UPSTREAM_1 then
-		next_zone = Config.scan_zone.CENTER_UPSTREAM_2
-	elseif State.current_scan_zone == Config.scan_zone.CENTER_UPSTREAM_2 then
-		next_zone = Config.scan_zone.SLIGHTLY_BELOW
-	elseif State.current_scan_zone == Config.scan_zone.SLIGHTLY_BELOW then
-		next_zone = Config.scan_zone.HIGH
+	-- Step through the (situation-dependent) elevation sequence, wrapping at the end.
+	local seq = elevation_zone_sequence()
+	local idx
+	for i, zone in ipairs(seq) do
+		if State.current_scan_zone == zone then
+			idx = i
+			break
+		end
 	end
-	return next_zone
+	if not idx then
+		return seq[1] -- not in the current sequence (e.g. sequence just changed): start at top
+	end
+	return seq[idx % #seq + 1]
 end
 
 function Phases.SelectScanZone(range, altitude, is_relative)

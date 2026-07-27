@@ -186,4 +186,32 @@ Config.SEARCH_RANGE_LADDER = {
 	Config.range.nm_25,
 }
 
+-- Elevation scan customization (see Phases.ComputeNextScanZone).
+-- Jester has no true AGL / radar-altimeter reading, only barometric (MSL) altitude,
+-- so this threshold is MSL. Below it he skips the below-level scan zones so he does
+-- not waste sweeps looking into the ground.
+Config.SKIP_DOWN_BELOW_ALTITUDE = ft(5000)
+
+-- Elevation zone order (references into Config.scan_zone). The default cycle, and a
+-- top-down sweep (highest first, then work down and repeat) used when searching at
+-- 25 nm. The below-level zones are dropped from either when flying below the
+-- altitude threshold above.
+Config.SCAN_ZONE_SEQUENCE_DEFAULT = {
+	Config.scan_zone.CENTER_DOWNSTREAM_1,
+	Config.scan_zone.CENTER_DOWNSTREAM_2,
+	Config.scan_zone.SLIGHTLY_ABOVE,
+	Config.scan_zone.LOW,
+	Config.scan_zone.CENTER_UPSTREAM_1,
+	Config.scan_zone.CENTER_UPSTREAM_2,
+	Config.scan_zone.SLIGHTLY_BELOW,
+	Config.scan_zone.HIGH,
+}
+Config.SCAN_ZONE_SEQUENCE_TOPDOWN = {
+	Config.scan_zone.HIGH,
+	Config.scan_zone.SLIGHTLY_ABOVE,
+	Config.scan_zone.CENTER_DOWNSTREAM_1,
+	Config.scan_zone.SLIGHTLY_BELOW,
+	Config.scan_zone.LOW,
+}
+
 return Config
