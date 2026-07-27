@@ -134,7 +134,7 @@ DbaseUtils.aircraft_to_phrase_map = {
 	["il-76md"] = {thatsaoran = "ThatsA", phrase = "aircraft/ilseventysix"},
 	["il-78m"] = {thatsaoran = "ThatsA", phrase = "aircraft/ilseventyeighttanker"},
 	["jf-17"] = {thatsaoran = "ThatsA", phrase = "aircraft/jfseventeen"},
-	["mig-19p"] = {thatsaoran = "ThatsA", phrase = "spotting/mignineteen"},
+	["mig-19p"] = {thatsaoran = "ThatsA", phrase = "aircraft/farmer"},
 	["mig-29"] = {thatsaoran = "ThatsA", phrase = "aircraft/migtwentynine"},
 	["mig-29g"] = {thatsaoran = "ThatsA", phrase = "aircraft/migtwentynine"},
 	["mig-29k"] = {thatsaoran = "ThatsA", phrase = "aircraft/migtwentynine"},
