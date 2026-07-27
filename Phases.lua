@@ -293,6 +293,10 @@ function Phases.AdvanceSearchRange()
 	else
 		State.search_range = Config.SEARCH_RANGE_LADDER[cur_idx + 1]
 	end
+	-- Entering the critical 25 nm sweep: require a full bar scan before ranging out.
+	if State.search_range == Config.range.nm_25 then
+		State.nm25_sweep_complete = false
+	end
 end
 
 function Phases.PrepareScanPattern()
@@ -354,6 +358,7 @@ function Phases.ComputeNextScanZone()
 
 	-- Step through the (situation-dependent) elevation sequence, wrapping at the end.
 	local seq = elevation_zone_sequence()
+	local is_25nm = (State.search_range or State.pilot_requested_range) == Config.range.nm_25
 	local idx
 	for i, zone in ipairs(seq) do
 		if State.current_scan_zone == zone then
@@ -363,6 +368,10 @@ function Phases.ComputeNextScanZone()
 	end
 	if not idx then
 		return seq[1] -- not in the current sequence (e.g. sequence just changed): start at top
+	end
+	if is_25nm and idx >= #seq then
+		-- just scanned the last (bottom) bar of the 25 nm sweep: it's now complete
+		State.nm25_sweep_complete = true
 	end
 	return seq[idx % #seq + 1]
 end
@@ -608,8 +617,14 @@ function Phases.AdjustGain()
 			State.search_gain = Config.SEARCH_GAIN_START -- first step at the current range
 		elseif State.search_gain <= Config.SEARCH_GAIN_MIN then
 			State.search_gain = Config.SEARCH_GAIN_START
-			Phases.AdvanceSearchRange() -- finished a gain sweep here; step to the next range
-			Log("Jester Radar | search sweep: range " .. tostring(State.search_range) .. ", gain walk restart at " .. tostring(State.search_gain))
+			-- 25 nm is the critical sweep: don't range out until the full elevation bar
+			-- scan has finished; keep gain-hunting here in the meantime.
+			if display_range == Config.range.nm_25 and not State.nm25_sweep_complete then
+				-- hold at 25 nm
+			else
+				Phases.AdvanceSearchRange() -- finished a gain sweep here; step to the next range
+				Log("Jester Radar | search sweep: range " .. tostring(State.search_range) .. ", gain walk restart at " .. tostring(State.search_gain))
+			end
 		else
 			State.search_gain = State.search_gain - Config.SEARCH_GAIN_STEP
 		end
