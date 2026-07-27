@@ -36,4 +36,16 @@ Jester Radar Gain Toggle
 
 This mod gives the player the ability to stop Jester from adjusting Radar Gain to allow player gain control. Toggle is available via Jester Wheel.
 
+### Startup
+-**No INS Alignment Question** You MUST tell Jester to start alignment yourself. There is a keybind for that. He will automatically do a Stored Heading Alignment if available, BATH if not. He will NEVER do a full alignment.
+
+### Taxi
+-**No Minimum Altitude Plan Question** Yay
+
+-**No obscenities on fast taxi or takeoff on non-runway** Also, Yay.
+
+### Takeoff
+-**Takeoff Callouts** Slight improvement to accuracy of callouts. Jester anticipates acceleration so if you are doing slow throttle he might call speeds early.
+
+
 
