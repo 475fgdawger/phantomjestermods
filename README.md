@@ -1,7 +1,7 @@
 # phantomjestermods
 mods for DCS F-4E Phantom Jester
 
-Better BFM
+Jester Combat Core
 
 A rewrite of the Heatblur F-4E Phantom Dogfight Advisory. This mod makes Jester much more useful in a visual dogfight. He will call out what he sees providing clock position, aircraft type and distance. Be advised he does not discriminate between friend or foe here. It is up to the pilot to decide based upon provided aircraft type.
 
