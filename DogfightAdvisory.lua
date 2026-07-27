@@ -22,6 +22,11 @@ local REPORT_INTERVAL       = s(4)
 local FRIENDLY_WEZ_HALF_ARC = deg(35)
 local HIGH_LOW_THRESHOLD    = deg(10)
 local FALLBACK_TYPE_PHRASE  = 'contacts_iff/bogey'
+-- A group's call is only repeated once its range OR bearing has moved at least this
+-- much since it was last announced (also re-called on a high/low or count change).
+-- Raise these to make Jester quieter for a steady contact.
+local MIN_DISTANCE_CHANGE   = NM(1)
+local MIN_DIRECTION_CHANGE  = deg(30)
 
 local MAX_COUNT_PHRASE = 4
 local NUMBER_PHRASES = {
@@ -36,6 +41,7 @@ function DogfightAdvisory:Constructor()
     self.report_timer   = s(0)
     self.fuel_timer     = s(0)
     self.contacts       = {}
+    self.last_call      = {} -- keyed by contact.true_id -> last announced { distance, azimuth, hilo, count }
 end
 
 -- Phrase builders ------------------------------------------------------------
@@ -58,22 +64,59 @@ local function DistancePhrase(contact)
     return 'spotting/wvrclose'
 end
 
-local function ClockPhrase(contact)
-    local hi_or_lo = ''
+local function ContactDistanceNM(contact)
+    return contact.polar_ned.length:ConvertTo(NM).value
+end
+
+local function ContactAzimuthDeg(contact)
+    return Math.Wrap360(contact.polar_body.azimuth):ConvertTo(deg).value
+end
+
+local function ContactHiLo(contact)
     local elev_body = contact.polar_body.elevation
     local elev_ned  = contact.polar_ned.elevation
-
     if elev_body > HIGH_LOW_THRESHOLD and elev_ned > HIGH_LOW_THRESHOLD then
-        hi_or_lo = 'high'
+        return 'high'
     elseif elev_body < -HIGH_LOW_THRESHOLD and elev_ned < -HIGH_LOW_THRESHOLD then
-        hi_or_lo = 'low'
+        return 'low'
     end
+    return ''
+end
 
+-- Shortest angular difference between two bearings in degrees (0..180).
+local function AngleDiffDeg(a, b)
+    local d = math.abs(a - b) % 360
+    if d > 180 then
+        d = 360 - d
+    end
+    return d
+end
+
+local function ClockPhrase(contact)
     local oclock = Utilities.AngleToOClock(Math.Wrap360(contact.polar_body.azimuth))
-    return 'spotting/bfm' .. oclock .. 'oclock' .. hi_or_lo
+    return 'spotting/bfm' .. oclock .. 'oclock' .. ContactHiLo(contact)
 end
 
 -- Announcement ---------------------------------------------------------------
+
+-- Returns true if a group's call should be (re)spoken: it is new, or its range,
+-- bearing, high/low, or count has changed by at least the configured thresholds
+-- since it was last announced. Otherwise the repeat is skipped to avoid continuous
+-- chatter on a steady contact.
+function DogfightAdvisory:GroupChangedEnough(group)
+    local ref  = group.nearest
+    local prev = ref.true_id and self.last_call[ref.true_id]
+    if not prev then
+        return true -- new contact (or no id to track): always call
+    end
+
+    local dist_changed  = math.abs(ContactDistanceNM(ref) - prev.distance) >= MIN_DISTANCE_CHANGE:ConvertTo(NM).value
+    local dir_changed   = AngleDiffDeg(ContactAzimuthDeg(ref), prev.azimuth) >= MIN_DIRECTION_CHANGE:ConvertTo(deg).value
+    local hilo_changed  = ContactHiLo(ref) ~= prev.hilo
+    local count_changed = math.min(#group.contacts, MAX_COUNT_PHRASE) ~= prev.count
+
+    return dist_changed or dir_changed or hilo_changed or count_changed
+end
 
 function DogfightAdvisory:SayStandardAdvisory(contacts)
     local jester = GetJester()
@@ -105,24 +148,53 @@ function DogfightAdvisory:SayStandardAdvisory(contacts)
         end
     end
 
-    for _, key in ipairs(order) do
-        local group    = groups[key]
-        local count    = math.min(#group.contacts, MAX_COUNT_PHRASE)
-        local distance = DistancePhrase(group.nearest)
-
-        local sentence
-        if count > 1 then
-            sentence = Sentence(group.clock, NUMBER_PHRASES[count], group.type, distance)
-        else
-            sentence = Sentence(group.clock, group.type, distance)
+    -- Forget last-call records for contacts no longer present, so a contact that
+    -- drops out and returns is called fresh (and the cache stays bounded).
+    local current_ids = {}
+    for _, contact in ipairs(contacts) do
+        if contact.true_id then
+            current_ids[contact.true_id] = true
         end
+    end
+    local kept = {}
+    for id, record in pairs(self.last_call) do
+        if current_ids[id] then
+            kept[id] = record
+        end
+    end
+    self.last_call = kept
 
-        jester:AddTask(SayTask:new(sentence))
+    for _, key in ipairs(order) do
+        local group = groups[key]
 
-        for _, contact in ipairs(group.contacts) do
-            contact.announced           = true
-            contact.announced_timestamp = now
-            jester.awareness:AddOrUpdateContact(contact)
+        -- Skip repeating a call that has not changed enough since last time.
+        if self:GroupChangedEnough(group) then
+            local count    = math.min(#group.contacts, MAX_COUNT_PHRASE)
+            local distance = DistancePhrase(group.nearest)
+
+            local sentence
+            if count > 1 then
+                sentence = Sentence(group.clock, NUMBER_PHRASES[count], group.type, distance)
+            else
+                sentence = Sentence(group.clock, group.type, distance)
+            end
+
+            jester:AddTask(SayTask:new(sentence))
+
+            local record = {
+                distance = ContactDistanceNM(group.nearest),
+                azimuth  = ContactAzimuthDeg(group.nearest),
+                hilo     = ContactHiLo(group.nearest),
+                count    = count,
+            }
+            for _, contact in ipairs(group.contacts) do
+                contact.announced           = true
+                contact.announced_timestamp = now
+                jester.awareness:AddOrUpdateContact(contact)
+                if contact.true_id then
+                    self.last_call[contact.true_id] = record
+                end
+            end
         end
     end
 end
