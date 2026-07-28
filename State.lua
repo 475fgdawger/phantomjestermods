@@ -26,8 +26,8 @@ State.pilot_requested_range = Config.range.nm_50 -- the display range to use dur
 State.pilot_requested_scan_type = Config.scan_type.wide -- the scan type to use during a regular scan pattern, ignored when a target is under focus
 State.is_auto_focus_allowed = true -- whether Jester is allowed to auto-highlight and focus targets within threat range
 State.is_auto_gain_allowed = true -- whether Jester is allowed to auto-adjust radar gain / clutter interest range (see Phases.AdjustGain). Set to false to have Jester leave gain alone by default. Toggled via the "radar_auto_gain" event / Radar wheel. NOT reset by State.Reset() (survives locks/scans), like is_auto_focus_allowed.
-State.sky_gain = nil -- calibrated sky-search coarse gain (nil until calibrated; Config.SKY_GAIN_FALLBACK used meanwhile). Survives State.Reset (per-sortie).
-State.sky_gain_calibrated = false -- once-per-sortie sky-gain calibration done? Survives State.Reset.
+State.sky_gain = nil -- calibrated sky-search coarse gain (nil until calibrated; Config.SKY_GAIN_FALLBACK used meanwhile). Survives State.Reset; cleared on radar power-off (see Radar.Tick).
+State.sky_gain_calibrated = false -- sky-gain calibration done? Survives State.Reset; cleared on radar power-off so it recalibrates on power-up.
 
 State.target_to_highlight = nil -- if set, the given target will be highlighted, or "selected"; this also includes automatic cursor movement
 State.pilot_requested_target_to_highlight = nil -- if set, Jester will stop automatically selecting high priority targets for highlight and stick to the selected target

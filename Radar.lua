@@ -320,6 +320,17 @@ function Radar.Tick()
 		forced_auto_focus_on = true
 	end
 
+	-- Sky-gain calibration is tied to radar power: while the radar is off/standby, clear
+	-- it so it recalibrates on the next power-up (rather than once per sortie).
+	if not Api.IsPowered() then
+		if State.sky_gain_calibrated then
+			Log("Jester Radar | radar off/standby - sky gain will recalibrate on power-up")
+		end
+		State.sky_gain_calibrated = false
+		State.sky_gain = nil
+		State.calibration_gain = nil
+	end
+
 	Routines.forget_old_targets:Tick()
 	Routines.update_targets_priority:Tick()
 	Routines.update_close_bandit_awareness:Tick()

@@ -167,7 +167,7 @@ Config.NAILS_SEARCH_AZIMUTH_TOLERANCE = deg(20) -- contact must be within this o
 Config.NAILS_SEARCH_MIN_HITS = 2                -- radar hits before a contact is considered lockable
 
 -- Normal-search gain: emulates the real-world sky-gain technique. Jester calibrates a
--- "sky gain" once per sortie by raising gain against clear sky until noise/clutter
+-- "sky gain" on each radar power-up by raising gain against clear sky until noise/clutter
 -- appears (proxied by a surge of sub-NOISE_HIT_THRESHOLD-hit returns in radar_targets),
 -- then backs off by SKY_GAIN_MARGIN and reuses that for all sky searches. For searches
 -- that produce ground clutter (GetRadarMlcRange within the display range) he walks gain

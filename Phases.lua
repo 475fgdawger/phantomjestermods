@@ -711,7 +711,7 @@ function Phases.AdjustGain()
 	end
 
 	-- Calibration up-walk: raise gain until noise surges against the clear sky, then
-	-- lock sky gain one margin below the onset (once per sortie). Each step is logged
+	-- lock sky gain one margin below the onset (once per radar power-up). Each step is logged
 	-- (gain + noise count) so the calibrated value can be checked for consistency.
 	if State.calibration_gain == nil then
 		State.calibration_gain = Config.SKY_GAIN_CAL_START
