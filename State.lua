@@ -26,6 +26,8 @@ State.pilot_requested_range = Config.range.nm_50 -- the display range to use dur
 State.pilot_requested_scan_type = Config.scan_type.wide -- the scan type to use during a regular scan pattern, ignored when a target is under focus
 State.is_auto_focus_allowed = true -- whether Jester is allowed to auto-highlight and focus targets within threat range
 State.is_auto_gain_allowed = true -- whether Jester is allowed to auto-adjust radar gain / clutter interest range (see Phases.AdjustGain). Set to false to have Jester leave gain alone by default. Toggled via the "radar_auto_gain" event / Radar wheel. NOT reset by State.Reset() (survives locks/scans), like is_auto_focus_allowed.
+State.sky_gain = nil -- calibrated sky-search coarse gain (nil until calibrated; Config.SKY_GAIN_FALLBACK used meanwhile). Survives State.Reset (per-sortie).
+State.sky_gain_calibrated = false -- once-per-sortie sky-gain calibration done? Survives State.Reset.
 
 State.target_to_highlight = nil -- if set, the given target will be highlighted, or "selected"; this also includes automatic cursor movement
 State.pilot_requested_target_to_highlight = nil -- if set, Jester will stop automatically selecting high priority targets for highlight and stick to the selected target
@@ -40,7 +42,9 @@ State.nails_search_azimuth = nil -- antenna azimuth (deg) of the nails bearing b
 State.nails_search_gain = nil -- current coarse gain during the gain-walk (nil until setup runs)
 State.nails_search_sweep_up = true -- elevation sweep direction toggle, flipped each dwell step
 
-State.search_gain = nil -- current coarse gain during the normal-search gain hunt (see Phases.AdjustGain)
+State.calibration_gain = nil -- current gain during the sky-gain calibration up-walk
+State.ground_gain = nil -- current gain during a ground-clutter walk-down
+State.range_dwell_start = nil -- mission_time the current display range began (range-sweep clock)
 State.search_range = nil -- current display range within the normal-search range sweep (nil = follow pilot_requested_range)
 State.nm25_sweep_complete = false -- whether the 25 nm elevation bar scan has finished all bars; gates ranging out of 25 nm
 
@@ -93,9 +97,12 @@ function State.Reset()
 	State.nails_search_azimuth = nil
 	State.nails_search_gain = nil
 	State.nails_search_sweep_up = true
-	State.search_gain = nil
+	State.calibration_gain = nil
+	State.ground_gain = nil
+	State.range_dwell_start = nil
 	State.search_range = nil
 	State.nm25_sweep_complete = false
+	-- NOTE: sky_gain / sky_gain_calibrated deliberately NOT reset here (per-sortie).
 
 	State.time_spent_trying_to_lock_bandit = s(0)
 	State.wrong_lock_attempts = 0
