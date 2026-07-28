@@ -166,25 +166,14 @@ Config.NAILS_SEARCH_ELEVATION_SWEEP = ft(20000) -- +/- relative altitude used to
 Config.NAILS_SEARCH_AZIMUTH_TOLERANCE = deg(20) -- contact must be within this of the bearing to count
 Config.NAILS_SEARCH_MIN_HITS = 2                -- radar hits before a contact is considered lockable
 
--- Normal-search gain: emulates the real-world sky-gain technique. Jester calibrates a
--- "sky gain" on each radar power-up by raising gain against clear sky until noise/clutter
--- appears (proxied by a surge of sub-NOISE_HIT_THRESHOLD-hit returns in radar_targets),
--- then backs off by SKY_GAIN_MARGIN and reuses that for all sky searches. For searches
--- that produce ground clutter (GetRadarMlcRange within the display range) he walks gain
--- DOWN from the sky gain until the clutter thins. Gated by the auto-gain toggle
--- (State.is_auto_gain_allowed). See Phases.AdjustGain.
-Config.SKY_GAIN_FALLBACK   = 0.75   -- sky gain used if calibration never finds the noise threshold
-Config.SKY_GAIN_CAL_START  = 0.5    -- calibration walks gain UP from here ...
-Config.SKY_GAIN_CAL_MAX    = 1.0    -- ... to here (past it with no noise -> use the fallback)
-Config.SKY_GAIN_CAL_STEP   = 0.05
-Config.SKY_GAIN_MARGIN     = 0.05   -- set sky gain this far below the noise-onset gain
-Config.NOISE_HIT_THRESHOLD = 2      -- radar returns with fewer hits than this are treated as noise/clutter
-Config.NOISE_SURGE_COUNT   = 6      -- this many noise returns against clear sky = noise onset
-Config.CLUTTER_CLEAR_COUNT = 3      -- ground-clutter walk-down stops once noise returns drop to/below this
-Config.GROUND_GAIN_FLOOR   = 0.5    -- lowest gain for ground-clutter searches
-Config.GROUND_GAIN_STEP    = 0.05   -- gain drop per dwell during the ground-clutter walk-down
-Config.GAIN_DWELL          = s(2.5) -- dwell after a gain change before reading the result
-Config.RANGE_DWELL         = s(15)  -- how long to search each display range before stepping (range-sweep clock)
+-- Normal-search gain. Jester can't measure screen clutter (the radar API exposes no
+-- noise/video level), so instead of calibrating he holds a fixed sky gain for sky
+-- searches and drops to a fixed lower gain when a search produces ground clutter
+-- (GetRadarMlcRange within the display range). Gated by the auto-gain toggle
+-- (State.is_auto_gain_allowed). See Phases.AdjustGain. Tune SKY_GAIN to taste.
+Config.SKY_GAIN            = 0.75   -- coarse gain held for all sky searches (incl. nails search)
+Config.GROUND_CLUTTER_GAIN = 0.60  -- coarse gain used when the search produces ground clutter
+Config.RANGE_DWELL        = s(15)  -- how long to search each display range before stepping (range-sweep clock)
 -- Descending ladder of the ranges the sweep/gain-hunt run at. The pilot's range is
 -- the sweep ceiling; ranges not listed (5/10 nm) get the backend gain and no sweep.
 Config.SEARCH_RANGE_LADDER = {

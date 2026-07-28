@@ -218,8 +218,8 @@ function Phases.HandleNailsSearch()
 		return task -- next tick FindNextPhase enters HANDLE_TARGET_LOCKING
 	end
 
-	-- Use the calibrated sky gain (no separate gain walk).
-	local sky = State.sky_gain or Config.SKY_GAIN_FALLBACK
+	-- Use the fixed sky gain (no separate gain walk).
+	local sky = Config.SKY_GAIN
 
 	if State.nails_search_start == nil then
 		-- One-time setup for this search: narrow scan, search display range.
@@ -594,29 +594,6 @@ local RANGE_NM = {
 	[Config.range.nm_50] = 50, [Config.range.nm_100] = 100, [Config.range.nm_200] = 200,
 }
 
--- Count of returns weak enough to be noise/clutter (fewer than NOISE_HIT_THRESHOLD hits).
--- This is Jester's only proxy for "screen speckle" - the radar API exposes no raw noise level.
-local function count_noise_returns()
-	local n = 0
-	for _, t in pairs(radar_targets or {}) do
-		if (t.number_of_hits or 0) < Config.NOISE_HIT_THRESHOLD and not t.found_in_acq_or_trk then
-			n = n + 1
-		end
-	end
-	return n
-end
-
--- Any solid (>= NOISE_HIT_THRESHOLD hits) contact on the scope right now? Used to avoid
--- calibrating the sky gain while real returns would inflate the noise count.
-local function has_confirmed_contacts()
-	for _, t in pairs(radar_targets or {}) do
-		if (t.number_of_hits or 0) >= Config.NOISE_HIT_THRESHOLD then
-			return true
-		end
-	end
-	return false
-end
-
 -- True when the current search produces ground clutter within the display range.
 -- GetRadarMlcRange returns the main-lobe (ground) clutter range, or nil when the beam
 -- isn't hitting the ground. NOTE: relies on that nil-when-looking-up behavior - validate in-sim.
@@ -667,8 +644,6 @@ function Phases.AdjustGain()
 	-- Focusing a target, or a non-swept display range (5/10 nm): defer to backend gain.
 	local display_range = Phases.GetSearchRange()
 	if State.target_to_focus_on or not ladder_index(display_range) then
-		State.calibration_gain = nil
-		State.ground_gain = nil
 		local interest_range
 		if State.target_to_focus_on then
 			interest_range = State.target_to_focus_on.scan_range
@@ -678,63 +653,19 @@ function Phases.AdjustGain()
 		return nil
 	end
 
-	-- Step the display range on the dwell timer (independent of gain now).
+	-- Step the display range on the dwell timer (independent of gain).
 	Phases.TickRangeDwell()
+
+	-- Fixed sky gain for sky searches; fixed lower gain when the search produces ground
+	-- clutter. Jester can't measure clutter, so both are set values (tune in Config).
+	local gain = Config.SKY_GAIN
+	if is_ground_clutter_search() then
+		gain = Config.GROUND_CLUTTER_GAIN
+	end
 
 	local task = Task:new()
 	task:SetPriority(1)
-
-	-- Ground-clutter search: walk gain DOWN from the sky gain until the clutter thins.
-	if is_ground_clutter_search() then
-		State.calibration_gain = nil
-		local sky = State.sky_gain or Config.SKY_GAIN_FALLBACK
-		if State.ground_gain == nil then
-			State.ground_gain = sky
-		elseif count_noise_returns() > Config.CLUTTER_CLEAR_COUNT and State.ground_gain > Config.GROUND_GAIN_FLOOR then
-			State.ground_gain = State.ground_gain - Config.GROUND_GAIN_STEP
-		end
-		return task:ClickFast("Radar Gain Coarse", State.ground_gain, true):Wait(Config.GAIN_DWELL)
-	end
-
-	-- Sky search.
-	State.ground_gain = nil
-
-	-- Already calibrated: just hold the sky gain.
-	if State.sky_gain_calibrated then
-		return task:ClickFast("Radar Gain Coarse", State.sky_gain or Config.SKY_GAIN_FALLBACK, true)
-	end
-
-	-- Only calibrate against a genuinely clear sky, else use the fallback for now.
-	if has_confirmed_contacts() then
-		State.calibration_gain = nil -- restart the walk when the sky clears again
-		return task:ClickFast("Radar Gain Coarse", Config.SKY_GAIN_FALLBACK, true)
-	end
-
-	-- Calibration up-walk: raise gain until noise surges against the clear sky, then
-	-- lock sky gain one margin below the onset (once per radar power-up). Each step is logged
-	-- (gain + noise count) so the calibrated value can be checked for consistency.
-	if State.calibration_gain == nil then
-		State.calibration_gain = Config.SKY_GAIN_CAL_START
-		return task:ClickFast("Radar Gain Coarse", State.calibration_gain, true):Wait(Config.GAIN_DWELL)
-	end
-
-	local noise = count_noise_returns()
-	Log("Jester Radar | sky-gain cal: gain " .. tostring(State.calibration_gain) .. ", noise returns " .. tostring(noise))
-	if noise >= Config.NOISE_SURGE_COUNT then
-		State.sky_gain = math.max(State.calibration_gain - Config.SKY_GAIN_MARGIN, Config.GROUND_GAIN_FLOOR)
-		State.sky_gain_calibrated = true
-		Log("Jester Radar | sky-gain CALIBRATED to " .. tostring(State.sky_gain) .. " (noise onset at gain " .. tostring(State.calibration_gain) .. ")")
-		State.calibration_gain = nil
-		return task:ClickFast("Radar Gain Coarse", State.sky_gain, true)
-	elseif State.calibration_gain >= Config.SKY_GAIN_CAL_MAX then
-		State.sky_gain = Config.SKY_GAIN_FALLBACK
-		State.sky_gain_calibrated = true
-		Log("Jester Radar | sky-gain CALIBRATED to fallback " .. tostring(State.sky_gain) .. " (no noise surge up to max gain)")
-		State.calibration_gain = nil
-		return task:ClickFast("Radar Gain Coarse", State.sky_gain, true)
-	end
-	State.calibration_gain = State.calibration_gain + Config.SKY_GAIN_CAL_STEP
-	return task:ClickFast("Radar Gain Coarse", State.calibration_gain, true):Wait(Config.GAIN_DWELL)
+	return task:ClickFast("Radar Gain Coarse", gain, true)
 end
 
 return Phases
