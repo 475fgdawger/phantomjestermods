@@ -503,7 +503,7 @@ ListenTo("radar_nails_search", "RadarNailsSearch", function(task, hour_str)
 
 	State.nails_search_active = true
 	State.nails_search_azimuth = azimuth
-	State.nails_search_gain = nil -- forces one-time setup on first phase entry
+	State.nails_search_start = nil -- forces one-time setup on first phase entry
 	State.nails_search_sweep_up = true
 	Log("Jester Radar | Nails search requested at " .. tostring(hour) .. " o'clock (az " .. tostring(azimuth) .. ")")
 end)

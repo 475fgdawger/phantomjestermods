@@ -146,7 +146,8 @@ Config.ARTIFICIAL_TARGET_ID = -1 -- Used if Jester is tracking a target he does 
 -- Nails Search: when a "nails" (airborne RWR emitter) appears in the forward arc
 -- (10-2 o'clock) while Jester is free-scanning, he dwells on that bearing sweeping
 -- elevation while walking coarse gain down from max, trying to resolve a lockable
--- contact. Auto-locks it if found, or gives up at NAILS_SEARCH_GAIN_MIN.
+-- contact. Auto-locks it if found, or gives up after NAILS_SEARCH_TIMEOUT. Uses the
+-- calibrated sky gain (see SKY_GAIN below) - no separate gain walk.
 -- Driven by Radar.FindNextPhase -> Phases.HandleNailsSearch; triggered from
 -- ObserveRWR via the "radar_nails_search" event (UserActions.lua). All values here
 -- are meant to be tuned in-sim.
@@ -157,10 +158,8 @@ Config.NAILS_SEARCH_HOUR_AZIMUTH = { -- forward-arc clock hours -> antenna azimu
 	[1]  = deg(30),
 	[2]  = deg(60),
 }
-Config.NAILS_SEARCH_GAIN_START = 0.8            -- coarse gain to begin the walk (max)
-Config.NAILS_SEARCH_GAIN_MIN = 0.5              -- coarse gain floor; give up here
-Config.NAILS_SEARCH_GAIN_STEP = 0.05           -- coarse gain drop per dwell step
-Config.NAILS_SEARCH_DWELL = s(2.5)             -- dwell time at each gain step
+Config.NAILS_SEARCH_TIMEOUT = s(30)            -- give up the directed search after this long if nothing lockable resolves
+Config.NAILS_SEARCH_DWELL = s(2.5)             -- dwell time at each elevation sweep step
 Config.NAILS_SEARCH_DISPLAY_RANGE = Config.range.nm_50 -- display range while searching
 Config.NAILS_SEARCH_AIM_RANGE = NM(25)         -- range used to aim the acquisition point
 Config.NAILS_SEARCH_ELEVATION_SWEEP = ft(20000) -- +/- relative altitude used to sweep elevation

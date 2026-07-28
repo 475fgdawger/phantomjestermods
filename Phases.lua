@@ -200,12 +200,14 @@ function Phases.HandleNailsSearch()
 	local move_radar_antenna = GetJester().behaviors[MoveRadarAntenna]
 	local azimuth = State.nails_search_azimuth or deg(0)
 
+	local now = Utilities.GetTime().mission_time
+
 	-- Resolved a lockable contact at the bearing? Hand off to the lock flow.
 	local target = FindLockableContactNearAzimuth(azimuth)
 	if target then
 		Log("Jester Radar | Nails search: resolved contact " .. tostring(target.id) .. " -> locking")
 		State.nails_search_active = false
-		State.nails_search_gain = nil
+		State.nails_search_start = nil
 
 		State.target_to_highlight = target
 		State.pilot_requested_target_to_highlight = target
@@ -216,31 +218,29 @@ function Phases.HandleNailsSearch()
 		return task -- next tick FindNextPhase enters HANDLE_TARGET_LOCKING
 	end
 
-	local is_setup = State.nails_search_gain == nil
-	if is_setup then
-		-- One-time setup for this search: narrow scan, search display range, gain at max.
-		State.nails_search_gain = Config.NAILS_SEARCH_GAIN_START
+	-- Use the calibrated sky gain (no separate gain walk).
+	local sky = State.sky_gain or Config.SKY_GAIN_FALLBACK
+
+	if State.nails_search_start == nil then
+		-- One-time setup for this search: narrow scan, search display range.
+		State.nails_search_start = now
 		State.nails_search_sweep_up = true
-		Log("Jester Radar | Nails search: begin at azimuth " .. tostring(azimuth) .. ", gain " .. tostring(State.nails_search_gain))
+		Log("Jester Radar | Nails search: begin at azimuth " .. tostring(azimuth) .. ", sky gain " .. tostring(sky))
 		task:ClickFast("Radar Scan Type", Config.scan_type.narrow, true)
 		    :ClickFast("Radar Range", Config.NAILS_SEARCH_DISPLAY_RANGE, true)
-	else
-		-- Walked gain to the floor without resolving anything? Give up, resume scan.
-		if State.nails_search_gain <= Config.NAILS_SEARCH_GAIN_MIN then
-			Log("Jester Radar | Nails search: gain floor reached, nothing lockable - resuming scan")
-			State.nails_search_active = false
-			State.nails_search_gain = nil
-			State.current_scan_zone = nil -- forces PREPARE_SCAN_PATTERN next
-			move_radar_cursor:ClearTarget()
-			move_radar_antenna:ClearTarget()
-			return task:ClickFast("Radar Gain Coarse", Config.NAILS_SEARCH_GAIN_MIN, true)
-			           :Say("radar/returningtoscan")
-		end
-		-- Step gain down for this dwell.
-		State.nails_search_gain = State.nails_search_gain - Config.NAILS_SEARCH_GAIN_STEP
+	elseif (now - State.nails_search_start) >= Config.NAILS_SEARCH_TIMEOUT then
+		-- Timed out without resolving anything? Give up, resume scan.
+		Log("Jester Radar | Nails search: timed out, nothing lockable - resuming scan")
+		State.nails_search_active = false
+		State.nails_search_start = nil
+		State.current_scan_zone = nil -- forces PREPARE_SCAN_PATTERN next
+		move_radar_cursor:ClearTarget()
+		move_radar_antenna:ClearTarget()
+		return task:Say("radar/returningtoscan")
 	end
 
-	-- Aim azimuth via the acquisition-gate cursor; sweep elevation via the antenna wheel.
+	-- Aim azimuth via the acquisition-gate cursor; sweep elevation via the antenna wheel;
+	-- hold gain at the calibrated sky gain.
 	local sweep_altitude = Config.NAILS_SEARCH_ELEVATION_SWEEP
 	if not State.nails_search_sweep_up then
 		sweep_altitude = ft(0) - Config.NAILS_SEARCH_ELEVATION_SWEEP
@@ -250,8 +250,7 @@ function Phases.HandleNailsSearch()
 	move_radar_cursor:MoveCursorTo(azimuth, Config.NAILS_SEARCH_AIM_RANGE)
 	move_radar_antenna:MoveAntennaTo(Config.NAILS_SEARCH_AIM_RANGE, sweep_altitude, true)
 
-	return task:ClickFast("Radar Gain Coarse", State.nails_search_gain, true)
-	           :Wait(Config.NAILS_SEARCH_DWELL)
+	return task:ClickFast("Radar Gain Coarse", sky, true):Wait(Config.NAILS_SEARCH_DWELL)
 end
 
 -- Position of a display range in the descending SEARCH_RANGE_LADDER, or nil if the
@@ -712,24 +711,29 @@ function Phases.AdjustGain()
 	end
 
 	-- Calibration up-walk: raise gain until noise surges against the clear sky, then
-	-- lock sky gain one margin below the onset (once per sortie).
+	-- lock sky gain one margin below the onset (once per sortie). Each step is logged
+	-- (gain + noise count) so the calibrated value can be checked for consistency.
 	if State.calibration_gain == nil then
 		State.calibration_gain = Config.SKY_GAIN_CAL_START
-	elseif count_noise_returns() >= Config.NOISE_SURGE_COUNT then
+		return task:ClickFast("Radar Gain Coarse", State.calibration_gain, true):Wait(Config.GAIN_DWELL)
+	end
+
+	local noise = count_noise_returns()
+	Log("Jester Radar | sky-gain cal: gain " .. tostring(State.calibration_gain) .. ", noise returns " .. tostring(noise))
+	if noise >= Config.NOISE_SURGE_COUNT then
 		State.sky_gain = math.max(State.calibration_gain - Config.SKY_GAIN_MARGIN, Config.GROUND_GAIN_FLOOR)
 		State.sky_gain_calibrated = true
-		Log("Jester Radar | sky-gain calibrated to " .. tostring(State.sky_gain) .. " (noise onset at " .. tostring(State.calibration_gain) .. ")")
+		Log("Jester Radar | sky-gain CALIBRATED to " .. tostring(State.sky_gain) .. " (noise onset at gain " .. tostring(State.calibration_gain) .. ")")
 		State.calibration_gain = nil
 		return task:ClickFast("Radar Gain Coarse", State.sky_gain, true)
 	elseif State.calibration_gain >= Config.SKY_GAIN_CAL_MAX then
 		State.sky_gain = Config.SKY_GAIN_FALLBACK
 		State.sky_gain_calibrated = true
-		Log("Jester Radar | sky-gain calibration hit max with no noise; using fallback " .. tostring(State.sky_gain))
+		Log("Jester Radar | sky-gain CALIBRATED to fallback " .. tostring(State.sky_gain) .. " (no noise surge up to max gain)")
 		State.calibration_gain = nil
 		return task:ClickFast("Radar Gain Coarse", State.sky_gain, true)
-	else
-		State.calibration_gain = State.calibration_gain + Config.SKY_GAIN_CAL_STEP
 	end
+	State.calibration_gain = State.calibration_gain + Config.SKY_GAIN_CAL_STEP
 	return task:ClickFast("Radar Gain Coarse", State.calibration_gain, true):Wait(Config.GAIN_DWELL)
 end
 
