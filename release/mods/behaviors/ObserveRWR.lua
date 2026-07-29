@@ -28,6 +28,12 @@ ObserveRWR.last_contact_report_was_double = false -- 2 contacts were reported
 
 ObserveRWR.maximum_altitude_for_aaa_report = ft(10000)
 
+-- Forward-arc (10-2 o'clock) directed radar search. A search is dispatched both for a
+-- brand-new forward-arc nails and when an already-known airborne contact drifts into
+-- the arc (see MaybeSearchOnArcEntry). The per-contact cooldown stops a contact sitting
+-- on the arc boundary from re-triggering a search every pass.
+ObserveRWR.arc_reentry_cooldown = s(15)
+
 -- Task priorities. Jester sorts pending tasks by priority (Jester.lua), so at
 -- the previous default of 0 these call-outs queued behind all other chatter and,
 -- being equal, were shuffled by the (non-stable) sort. These match the rest of
@@ -60,6 +66,9 @@ local function hour_to_string(hour)
 	}
 	return hours[tonumber(hour)] or 'ERROR: INVALID HOUR'
 end
+
+-- Forward arc for the directed radar search: 10, 11, 12, 1, 2 o'clock.
+local FORWARD_ARC_HOURS = { [10] = true, [11] = true, [12] = true, [1] = true, [2] = true }
 
 local function contains_id(table, id)
 	if table == nil then
@@ -194,13 +203,14 @@ function ObserveRWR:SaySinger(task, hour, type_1, type_2, subsequent)
     return true
 end
 
-function ObserveRWR:RememberNewContact(id, signature, announced)
+function ObserveRWR:RememberNewContact(id, signature, announced, hour)
     local new_contact = {}
     new_contact.id = id
     new_contact.activity = ""
     new_contact.call_signature = signature
     new_contact.announced = announced or false
     new_contact.last_seen_time_stamp = Utilities.GetTime().mission_time
+    new_contact.last_hour = tonumber(hour) -- baseline bearing for forward-arc entry detection
     table.insert(self.known_contacts, new_contact)
 end
 
@@ -212,7 +222,7 @@ function ObserveRWR:ReportNewContact(task, category_1, category_2, type_1, type_
         -- Forward-arc nails (10-2 o'clock): ask the radar to search that bearing.
         -- The radar side (UserActions "radar_nails_search") only acts while free-scanning.
         local h = tonumber(hour)
-        if h == 10 or h == 11 or h == 12 or h == 1 or h == 2 then
+        if h and FORWARD_ARC_HOURS[h] then
             Dispatch("radar_nails_search", tostring(h))
         end
     elseif category_1 == 'surface' then
@@ -259,6 +269,34 @@ function ObserveRWR:UpdateContactActivity(singer_task, index, contact)
     return emitted
 end
 
+-- Fires a directed nails-search when a known airborne contact transitions INTO the
+-- forward arc (10-2 o'clock) - i.e. it was outside the arc last pass and is inside it
+-- now. Tracks each contact's last hour to detect that edge, and rate-limits per contact
+-- (arc_reentry_cooldown) so a contact hovering on the boundary can't spam searches.
+function ObserveRWR:MaybeSearchOnArcEntry(index, contact)
+    local known = self.known_contacts[index]
+    local h     = tonumber(contact.hour)
+    local prev  = known.last_hour
+    known.last_hour = h -- always keep the latest hour for the next pass's edge detection
+
+    if contact.category_1 ~= 'airborne' or is_friendly(contact) then
+        return -- only airborne, non-friendly emitters warrant a search
+    end
+
+    local in_arc     = h ~= nil and FORWARD_ARC_HOURS[h] == true
+    local was_in_arc = prev ~= nil and FORWARD_ARC_HOURS[prev] == true
+    if not (in_arc and not was_in_arc) then
+        return -- not a fresh entry into the forward arc
+    end
+
+    local now = Utilities.GetTime().mission_time
+    if known.last_arc_search and (now - known.last_arc_search) < self.arc_reentry_cooldown then
+        return -- searched this contact into the arc very recently; don't spam
+    end
+    known.last_arc_search = now
+    Dispatch("radar_nails_search", tostring(h))
+end
+
 function ObserveRWR:Constructor()
 	Behavior.Constructor(self)
 
@@ -302,6 +340,9 @@ function ObserveRWR:Constructor()
                 if self:UpdateContactActivity(singer_task, known_index, contact) then
                     singer_has_content = true
                 end
+                -- A known airborne contact that drifts into the forward arc (10-2)
+                -- triggers a fresh directed radar search, just like a new nails there.
+                self:MaybeSearchOnArcEntry(known_index, contact)
 	        else
                 -- new contact
                 local signature = call_signature(contact.category_1, contact.hour, contact.type_1)
@@ -309,17 +350,17 @@ function ObserveRWR:Constructor()
                 if is_friendly(contact) then
                     -- don't call out friendly contacts; remember so we don't re-evaluate every tick
                     --Log('Jester RWR | skipping friendly contact: ' .. tostring(contact.symbol_1))
-                    self:RememberNewContact(contact.id, signature, false)
+                    self:RememberNewContact(contact.id, signature, false, contact.hour)
                 elseif contact.subcategory_1 == 'aaa' and contact.subcategory_2 == 'aaa' and GetAltitude() > self.maximum_altitude_for_aaa_report then
                     -- don't call out AAA when flying high; remember so we don't re-evaluate every tick
                     --Log('Jester RWR | skipping AAA: ' .. tostring(contact.symbol_1))
-                    self:RememberNewContact(contact.id, signature, false)
+                    self:RememberNewContact(contact.id, signature, false, contact.hour)
                 elseif self:HasAnnouncedEquivalent(signature) then
                     -- an identical call-out (same call & clock, and type for mud) was
                     -- already made for another contact; don't repeat it. Remember this
                     -- one so it's tracked but stays silent.
                     --Log('Jester RWR | skipping duplicate call-out: ' .. tostring(signature))
-                    self:RememberNewContact(contact.id, signature, false)
+                    self:RememberNewContact(contact.id, signature, false, contact.hour)
                 else
                     -- proceed to checking time interval criteria
                     local time_from_last_new_contact_report = Utilities.GetTime().mission_time - self.last_contact_report_time_stamp
@@ -328,13 +369,13 @@ function ObserveRWR:Constructor()
                         local reported = self:ReportNewContact(report_task, contact.category_1, contact.category_2, contact.type_1, contact.type_2, contact.hour, false)
                         if reported then report_has_content = true end
                         self.last_contact_report_was_double = false
-                        self:RememberNewContact(contact.id, signature, reported)
+                        self:RememberNewContact(contact.id, signature, reported, contact.hour)
                         new_contacts = new_contacts + 1
                     elseif not self.last_contact_report_was_double and time_from_last_new_contact_report < self.maximum_interval_for_double_report then
                         local reported = self:ReportNewContact(report_task, contact.category_1, contact.category_2, contact.type_1, contact.type_2, contact.hour, true)
                         if reported then report_has_content = true end
                         self.last_contact_report_was_double = true
-                        self:RememberNewContact(contact.id, signature, reported)
+                        self:RememberNewContact(contact.id, signature, reported, contact.hour)
                         new_contacts = new_contacts + 1
                     else
                         -- Timing gap: can't announce yet. Deliberately do NOT remember it,
