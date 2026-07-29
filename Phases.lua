@@ -17,6 +17,10 @@ local Phases = {}
 -- call, confirming the default state.
 local last_logged_auto_gain = nil
 
+-- Don't re-click the coarse gain (and spam its log) when it's already at target.
+-- Larger than any set/quantization error, smaller than the sky<->ground gain gap.
+local GAIN_EPSILON = 0.02
+
 function Phases.HandleTargetLocking()
 	local task = Task:new()
 	task:SetPriority(1)
@@ -661,6 +665,12 @@ function Phases.AdjustGain()
 	local gain = Config.SKY_GAIN
 	if is_ground_clutter_search() then
 		gain = Config.GROUND_CLUTTER_GAIN
+	end
+
+	-- Already at the target gain: don't re-click every cycle. This is what was
+	-- producing the recurring "Click 'Radar Gain Coarse': x" log spam.
+	if Math.Abs(Api.GetCurrentGainCoarse() - gain) <= GAIN_EPSILON then
+		return nil
 	end
 
 	local task = Task:new()

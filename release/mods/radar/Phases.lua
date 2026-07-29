@@ -17,6 +17,10 @@ local Phases = {}
 -- call, confirming the default state.
 local last_logged_auto_gain = nil
 
+-- Don't re-click the coarse gain (and spam its log) when it's already at target.
+-- Larger than any set/quantization error, smaller than the sky<->ground gain gap.
+local GAIN_EPSILON = 0.02
+
 function Phases.HandleTargetLocking()
 	local task = Task:new()
 	task:SetPriority(1)
@@ -200,12 +204,14 @@ function Phases.HandleNailsSearch()
 	local move_radar_antenna = GetJester().behaviors[MoveRadarAntenna]
 	local azimuth = State.nails_search_azimuth or deg(0)
 
+	local now = Utilities.GetTime().mission_time
+
 	-- Resolved a lockable contact at the bearing? Hand off to the lock flow.
 	local target = FindLockableContactNearAzimuth(azimuth)
 	if target then
 		Log("Jester Radar | Nails search: resolved contact " .. tostring(target.id) .. " -> locking")
 		State.nails_search_active = false
-		State.nails_search_gain = nil
+		State.nails_search_start = nil
 
 		State.target_to_highlight = target
 		State.pilot_requested_target_to_highlight = target
@@ -216,31 +222,29 @@ function Phases.HandleNailsSearch()
 		return task -- next tick FindNextPhase enters HANDLE_TARGET_LOCKING
 	end
 
-	local is_setup = State.nails_search_gain == nil
-	if is_setup then
-		-- One-time setup for this search: narrow scan, search display range, gain at max.
-		State.nails_search_gain = Config.NAILS_SEARCH_GAIN_START
+	-- Use the fixed sky gain (no separate gain walk).
+	local sky = Config.SKY_GAIN
+
+	if State.nails_search_start == nil then
+		-- One-time setup for this search: narrow scan, search display range.
+		State.nails_search_start = now
 		State.nails_search_sweep_up = true
-		Log("Jester Radar | Nails search: begin at azimuth " .. tostring(azimuth) .. ", gain " .. tostring(State.nails_search_gain))
+		Log("Jester Radar | Nails search: begin at azimuth " .. tostring(azimuth) .. ", sky gain " .. tostring(sky))
 		task:ClickFast("Radar Scan Type", Config.scan_type.narrow, true)
 		    :ClickFast("Radar Range", Config.NAILS_SEARCH_DISPLAY_RANGE, true)
-	else
-		-- Walked gain to the floor without resolving anything? Give up, resume scan.
-		if State.nails_search_gain <= Config.NAILS_SEARCH_GAIN_MIN then
-			Log("Jester Radar | Nails search: gain floor reached, nothing lockable - resuming scan")
-			State.nails_search_active = false
-			State.nails_search_gain = nil
-			State.current_scan_zone = nil -- forces PREPARE_SCAN_PATTERN next
-			move_radar_cursor:ClearTarget()
-			move_radar_antenna:ClearTarget()
-			return task:ClickFast("Radar Gain Coarse", Config.NAILS_SEARCH_GAIN_MIN, true)
-			           :Say("radar/returningtoscan")
-		end
-		-- Step gain down for this dwell.
-		State.nails_search_gain = State.nails_search_gain - Config.NAILS_SEARCH_GAIN_STEP
+	elseif (now - State.nails_search_start) >= Config.NAILS_SEARCH_TIMEOUT then
+		-- Timed out without resolving anything? Give up, resume scan.
+		Log("Jester Radar | Nails search: timed out, nothing lockable - resuming scan")
+		State.nails_search_active = false
+		State.nails_search_start = nil
+		State.current_scan_zone = nil -- forces PREPARE_SCAN_PATTERN next
+		move_radar_cursor:ClearTarget()
+		move_radar_antenna:ClearTarget()
+		return task:Say("radar/returningtoscan")
 	end
 
-	-- Aim azimuth via the acquisition-gate cursor; sweep elevation via the antenna wheel.
+	-- Aim azimuth via the acquisition-gate cursor; sweep elevation via the antenna wheel;
+	-- hold gain at the calibrated sky gain.
 	local sweep_altitude = Config.NAILS_SEARCH_ELEVATION_SWEEP
 	if not State.nails_search_sweep_up then
 		sweep_altitude = ft(0) - Config.NAILS_SEARCH_ELEVATION_SWEEP
@@ -250,8 +254,7 @@ function Phases.HandleNailsSearch()
 	move_radar_cursor:MoveCursorTo(azimuth, Config.NAILS_SEARCH_AIM_RANGE)
 	move_radar_antenna:MoveAntennaTo(Config.NAILS_SEARCH_AIM_RANGE, sweep_altitude, true)
 
-	return task:ClickFast("Radar Gain Coarse", State.nails_search_gain, true)
-	           :Wait(Config.NAILS_SEARCH_DWELL)
+	return task:ClickFast("Radar Gain Coarse", sky, true):Wait(Config.NAILS_SEARCH_DWELL)
 end
 
 -- Position of a display range in the descending SEARCH_RANGE_LADDER, or nil if the
@@ -590,6 +593,42 @@ function Phases.CallOutNextContacts()
 	return task
 end
 
+local RANGE_NM = {
+	[Config.range.nm_5] = 5, [Config.range.nm_10] = 10, [Config.range.nm_25] = 25,
+	[Config.range.nm_50] = 50, [Config.range.nm_100] = 100, [Config.range.nm_200] = 200,
+}
+
+-- True when the current search produces ground clutter within the display range.
+-- GetRadarMlcRange returns the main-lobe (ground) clutter range, or nil when the beam
+-- isn't hitting the ground. NOTE: relies on that nil-when-looking-up behavior - validate in-sim.
+local function is_ground_clutter_search()
+	local mlc = GetRadarMlcRange()
+	if not mlc then
+		return false
+	end
+	local display_nm = RANGE_NM[State.search_range or State.pilot_requested_range] or 50
+	return mlc:ConvertTo(NM).value <= display_nm
+end
+
+-- Range-sweep clock (decoupled from gain): advance the display range after RANGE_DWELL,
+-- holding at 25 nm until the elevation bar scan has finished.
+function Phases.TickRangeDwell()
+	local now = Utilities.GetTime().mission_time
+	if State.range_dwell_start == nil then
+		State.range_dwell_start = now
+		return
+	end
+	if (now - State.range_dwell_start) < Config.RANGE_DWELL then
+		return
+	end
+	local at_25nm = (State.search_range or State.pilot_requested_range) == Config.range.nm_25
+	if at_25nm and not State.nm25_sweep_complete then
+		return -- hold at 25 nm until the bar scan completes
+	end
+	Phases.AdvanceSearchRange()
+	State.range_dwell_start = now
+end
+
 function Phases.AdjustGain()
 	if State.pilot_requested_scan_zone == State.current_scan_zone then
 		State.pilot_requested_scan_zone = nil
@@ -603,45 +642,40 @@ function Phases.AdjustGain()
 		last_logged_auto_gain = State.is_auto_gain_allowed
 	end
 	if not State.is_auto_gain_allowed then
-		State.search_gain = nil
 		return nil
 	end
 
-	-- Range sweep + gain hunt (see Config). At each swept range Jester walks coarse
-	-- gain down from SEARCH_GAIN_START to SEARCH_GAIN_MIN, one step per scan cycle;
-	-- when a full gain sweep completes he steps the display range one shorter and
-	-- restarts the gain walk, restarting the whole ladder once past 25 nm.
+	-- Focusing a target, or a non-swept display range (5/10 nm): defer to backend gain.
 	local display_range = Phases.GetSearchRange()
-	if not State.target_to_focus_on and ladder_index(display_range) then
-		if State.search_gain == nil then
-			State.search_gain = Config.SEARCH_GAIN_START -- first step at the current range
-		elseif State.search_gain <= Config.SEARCH_GAIN_MIN then
-			State.search_gain = Config.SEARCH_GAIN_START
-			-- 25 nm is the critical sweep: don't range out until the full elevation bar
-			-- scan has finished; keep gain-hunting here in the meantime.
-			if display_range == Config.range.nm_25 and not State.nm25_sweep_complete then
-				-- hold at 25 nm
-			else
-				Phases.AdvanceSearchRange() -- finished a gain sweep here; step to the next range
-				Log("Jester Radar | search sweep: range " .. tostring(State.search_range) .. ", gain walk restart at " .. tostring(State.search_gain))
-			end
-		else
-			State.search_gain = State.search_gain - Config.SEARCH_GAIN_STEP
+	if State.target_to_focus_on or not ladder_index(display_range) then
+		local interest_range
+		if State.target_to_focus_on then
+			interest_range = State.target_to_focus_on.scan_range
 		end
-		local task = Task:new()
-		task:SetPriority(1)
-		return task:ClickFast("Radar Gain Coarse", State.search_gain, true)
+		SetRadarClutterInterestRange(interest_range)
+		RadarAdjustGain()
+		return nil
 	end
 
-	-- Short range (or focusing a target): fall back to the backend gain adjustment.
-	State.search_gain = nil
-	local interest_range
-	if State.target_to_focus_on then
-		interest_range = State.target_to_focus_on.scan_range
+	-- Step the display range on the dwell timer (independent of gain).
+	Phases.TickRangeDwell()
+
+	-- Fixed sky gain for sky searches; fixed lower gain when the search produces ground
+	-- clutter. Jester can't measure clutter, so both are set values (tune in Config).
+	local gain = Config.SKY_GAIN
+	if is_ground_clutter_search() then
+		gain = Config.GROUND_CLUTTER_GAIN
 	end
-	SetRadarClutterInterestRange(interest_range)
-	RadarAdjustGain()
-	return nil
+
+	-- Already at the target gain: don't re-click every cycle. This is what was
+	-- producing the recurring "Click 'Radar Gain Coarse': x" log spam.
+	if Math.Abs(Api.GetCurrentGainCoarse() - gain) <= GAIN_EPSILON then
+		return nil
+	end
+
+	local task = Task:new()
+	task:SetPriority(1)
+	return task:ClickFast("Radar Gain Coarse", gain, true)
 end
 
 return Phases
