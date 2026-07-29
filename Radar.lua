@@ -54,6 +54,7 @@ local Radar = {}
 -- never has to turn it on. Applied once in Radar.Tick; the pilot can still toggle
 -- it off afterwards via the Radar wheel / radar_auto_focus.
 local forced_auto_focus_on = false
+local last_gain_log = nil -- TEMP: timestamp of the last manual-gain readout (see Radar.Tick)
 
 function Radar.UpdateDiveToss()
 	local move_radar_cursor = GetJester().behaviors[MoveRadarCursor]
@@ -318,6 +319,16 @@ function Radar.Tick()
 	if not forced_auto_focus_on then
 		State.is_auto_focus_allowed = true
 		forced_auto_focus_on = true
+	end
+
+	-- TEMP instrumentation: with Auto Gain OFF, log the current coarse gain every 5 s so
+	-- the manually-set value is visible (the cockpit shows no number). Remove when done tuning.
+	if not State.is_auto_gain_allowed and Api.IsPowered() then
+		local now = Utilities.GetTime().mission_time
+		if last_gain_log == nil or (now - last_gain_log) >= s(5) then
+			last_gain_log = now
+			Log("Jester Radar | manual coarse gain: " .. tostring(Api.GetCurrentGainCoarse()))
+		end
 	end
 
 	Routines.forget_old_targets:Tick()
