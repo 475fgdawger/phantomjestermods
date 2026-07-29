@@ -4,7 +4,7 @@ mods for DCS F-4E Phantom Jester
 Jester Combat Core
 
 ### Jester Radar (A2A search)
-- **Range + gain sweep** during normal search: works down from your selected display range to 25 nm, walking coarse gain 0.8 → 0.5 at each range to surface weak/distant returns.
+- **Range + gain sweep** during normal search: works down from your selected display range to 25 nm, Gain is .62783 Coarse Knob for all searched, adjusting down to .5 when ground clutter is detected.
 - **25 nm manual bar scan**: elevation bars from +30,000 ft down to −5,000 ft (referenced at 30 nm); Jester completes the full vertical sweep before ranging out, and stops at CENTER when flying low.
 - **Low-altitude cutoff**: skips the below-level elevation zones at/below 5,000 ft MSL so he doesn't scan into the ground.
 - **Auto-gain toggle** via the Radar wheel "Auto Gain" item / `radar_auto_gain` event — gates all Jester gain adjustment (including the cage/boresight reset).
