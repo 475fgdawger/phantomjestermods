@@ -171,8 +171,8 @@ Config.NAILS_SEARCH_MIN_HITS = 2                -- radar hits before a contact i
 -- searches and drops to a fixed lower gain when a search produces ground clutter
 -- (GetRadarMlcRange within the display range). Gated by the auto-gain toggle
 -- (State.is_auto_gain_allowed). See Phases.AdjustGain. Tune SKY_GAIN to taste.
-Config.SKY_GAIN            = 0.75   -- coarse gain held for all sky searches (incl. nails search)
-Config.GROUND_CLUTTER_GAIN = 0.60  -- coarse gain used when the search produces ground clutter
+Config.SKY_GAIN            = 0.62793 -- coarse gain held for all sky searches (incl. nails search)
+Config.GROUND_CLUTTER_GAIN = 0.5     -- coarse gain used when the search produces ground clutter
 Config.RANGE_DWELL        = s(15)  -- how long to search each display range before stepping (range-sweep clock)
 -- Descending ladder of the ranges the sweep/gain-hunt run at. The pilot's range is
 -- the sweep ceiling; ranges not listed (5/10 nm) get the backend gain and no sweep.
