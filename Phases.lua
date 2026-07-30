@@ -574,6 +574,15 @@ function Phases.IdentifyTargets()
 		"%.1f IDENTIFY total=%d notnoise=%d new=%d suppressed=%d known=%d srange=%s",
 		now:ConvertTo(s).value, total, notnoise, count, suppressed, already_identified_count,
 		tostring(State.search_range)))
+	-- When contacts are present but getting filtered, dump each one's hit count / flags /
+	-- range / azimuth so we can see WHY (e.g. number_of_hits stuck at 1 = beam grazing).
+	if total > 0 then
+		for id, target in pairs(radar_targets) do
+			Config.ConsoleLog(string.format("     tgt id=%s hits=%s acqtrk=%s alive=%s rng=%s az=%s",
+				tostring(id), tostring(target.number_of_hits), tostring(target.found_in_acq_or_trk),
+				tostring(IsObjectWithIdAlive(id)), tostring(target.scan_range), tostring(target.scan_azimuth)))
+		end
+	end
 
 	local task = Task:new()
 	task:SetPriority(1)

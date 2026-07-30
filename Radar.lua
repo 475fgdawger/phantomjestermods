@@ -366,14 +366,17 @@ function Radar.Tick()
 		local n_targets = 0
 		for _ in pairs(radar_targets or {}) do n_targets = n_targets + 1 end
 		local waiting = State.task ~= nil and not State.task:IsFinished()
+		local gain = "?"
+		pcall(function() gain = string.format("%.3f", Api.GetCurrentGainCoarse()) end)
 		Config.ConsoleLog(string.format(
-			"%.1f RADAR phase=%s wait=%s nails=%s lock=%s curlock=%s ntgt=%d srange=%s prange=%s",
+			"%.1f RADAR phase=%s wait=%s nails=%s lock=%s curlock=%s ntgt=%d srange=%s prange=%s gain=%s autogain=%s",
 			Utilities.GetTime().mission_time:ConvertTo(s).value,
 			tostring(State.current_phase), tostring(waiting),
 			tostring(State.nails_search_active),
 			State.target_to_lock and tostring(State.target_to_lock.id) or "-",
 			State.target_currently_locked and tostring(State.target_currently_locked.id) or "-",
-			n_targets, tostring(State.search_range), tostring(State.pilot_requested_range)))
+			n_targets, tostring(State.search_range), tostring(State.pilot_requested_range),
+			gain, tostring(State.is_auto_gain_allowed)))
 		dbg_hb = s(0)
 		dbg_last_phase = State.current_phase
 	end
