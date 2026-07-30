@@ -59,6 +59,7 @@ State.unidentified_new_targets = {} -- temporarily holds contacts just spotted b
 State.identified_targets = {} -- all contacts that were IFFed, identification is stable
 State.processed_targets = {} -- all contacts that were called out (BRA), contact is fully processed
 State.all_targets = {} -- contains all contacts, from the moment they were spotted
+State.recently_forgotten = {} -- id -> mission_time a contact was forgotten (dropped lock); re-detections within FORGOTTEN_TARGET_QUIET_TIME are absorbed silently (no repeat callout). Persists across Reset; purged lazily on expiry.
 
 State.bandits_by_priority_desc = {} -- view of State.all_targets, filtered by bandits (HOSTILE or UNKNOWN), sorted (highest priority first)
 State.not_bandits_by_priority_desc = {} -- view of State.all_targets, filtered by non-bandits (FRIENDLY, NEUTRAL), sorted (highest priority first)

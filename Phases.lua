@@ -36,6 +36,10 @@ local function forget_target(id)
 	State.processed_targets[id] = nil
 	State.all_targets[id] = nil
 
+	-- Remember we just forgot this one, so the scan's fresh re-detection is absorbed
+	-- silently for a short while instead of producing a repeat "new contact" call-out.
+	State.recently_forgotten[id] = Utilities.GetTime().mission_time
+
 	if State.target_to_highlight and State.target_to_highlight.id == id then
 		State.target_to_highlight = nil
 	end
@@ -56,6 +60,20 @@ local function forget_target(id)
 	end
 
 	Api.UpdateTargetsPriority() -- rebuild the bandit/non-bandit priority views without it
+end
+
+-- True if `id` was forgotten (via forget_target) within FORGOTTEN_TARGET_QUIET_TIME.
+-- Expired entries are purged so a later reappearance counts as a genuine re-acquisition.
+local function was_recently_forgotten(id, now)
+	local forgotten_at = State.recently_forgotten[id]
+	if forgotten_at == nil then
+		return false
+	end
+	if (now - forgotten_at) >= Config.FORGOTTEN_TARGET_QUIET_TIME then
+		State.recently_forgotten[id] = nil
+		return false
+	end
+	return true
 end
 
 function Phases.HandleTargetLocking()
@@ -507,6 +525,7 @@ end
 
 function Phases.IdentifyTargets()
 	State.unidentified_new_targets = {}
+	local now = Utilities.GetTime().mission_time
 	local count = 0
 	local already_identified_count = 0
 	local first_contact
@@ -514,7 +533,15 @@ function Phases.IdentifyTargets()
 		local is_not_noise = target.number_of_hits >= 2 and not target.found_in_acq_or_trk
 		local is_new = State.identified_targets[id] == nil and State.processed_targets[id] == nil
 		if is_not_noise and IsObjectWithIdAlive(id) then
-			if is_new then
+			if is_new and was_recently_forgotten(id, now) then
+				-- Contact we just forgot after a dropped/aborted lock: track it again
+				-- with fresh data (so it stays lockable/highlightable) but do NOT
+				-- re-announce it - no repeat "new contact" call-out during the quiet window.
+				State.processed_targets[id] = target
+				State.all_targets[id] = target
+				State.recently_forgotten[id] = nil -- consumed; it's a tracked, known contact now
+				already_identified_count = already_identified_count + 1
+			elseif is_new then
 				State.unidentified_new_targets[id] = target
 				State.all_targets[id] = target
 				--Log("Spotted " .. Api.TargetToString(target))
