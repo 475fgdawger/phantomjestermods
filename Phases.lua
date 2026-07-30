@@ -534,12 +534,13 @@ function Phases.IdentifyTargets()
 		local is_new = State.identified_targets[id] == nil and State.processed_targets[id] == nil
 		if is_not_noise and IsObjectWithIdAlive(id) then
 			if is_new and was_recently_forgotten(id, now) then
-				-- Contact we just forgot after a dropped/aborted lock: track it again
-				-- with fresh data (so it stays lockable/highlightable) but do NOT
-				-- re-announce it - no repeat "new contact" call-out during the quiet window.
-				State.processed_targets[id] = target
+				-- Contact we just forgot after a dropped/aborted lock: keep it tracked with
+				-- fresh data (so it stays lockable/highlightable) but stay quiet for the
+				-- quiet window - no immediate repeat call-out. Crucially, do NOT mark it
+				-- processed here: that would silence it forever. Leaving it un-processed
+				-- means once the window expires (was_recently_forgotten purges the entry) it
+				-- is announced fresh like any other contact - Jester keeps detecting it.
 				State.all_targets[id] = target
-				State.recently_forgotten[id] = nil -- consumed; it's a tracked, known contact now
 				already_identified_count = already_identified_count + 1
 			elseif is_new then
 				State.unidentified_new_targets[id] = target
