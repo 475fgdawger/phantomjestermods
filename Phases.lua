@@ -60,6 +60,9 @@ local function forget_target(id)
 	end
 
 	Api.UpdateTargetsPriority() -- rebuild the bandit/non-bandit priority views without it
+	Config.ConsoleLog(string.format("%.1f FORGET id=%s (quiet %ss)",
+		Utilities.GetTime().mission_time:ConvertTo(s).value, tostring(id),
+		tostring(Config.FORGOTTEN_TARGET_QUIET_TIME:ConvertTo(s).value)))
 end
 
 -- True if `id` was forgotten (via forget_target) within FORGOTTEN_TARGET_QUIET_TIME.
@@ -268,6 +271,8 @@ function Phases.HandleNailsSearch()
 	local target = FindLockableContactNearAzimuth(azimuth)
 	if target then
 		Log("Jester Radar | Nails search: resolved contact " .. tostring(target.id) .. " -> locking")
+		Config.ConsoleLog(string.format("%.1f NAILS resolved id=%s -> locking",
+			now:ConvertTo(s).value, tostring(target.id)))
 		State.nails_search_active = false
 		State.nails_search_start = nil
 
@@ -294,6 +299,7 @@ function Phases.HandleNailsSearch()
 		State.nails_search_sweep_up = true
 		State.nails_search_scans_completed = 0
 		Log("Jester Radar | Nails search: begin at azimuth " .. tostring(azimuth) .. ", sky gain " .. tostring(sky))
+		Config.ConsoleLog(string.format("%.1f NAILS begin az=%s", now:ConvertTo(s).value, tostring(azimuth)))
 		task:ClickFast("Radar Scan Type", Config.scan_type.narrow, true)
 		    :ClickFast("Radar Range", Config.NAILS_SEARCH_DISPLAY_RANGE, true)
 	elseif (now - State.nails_search_start) >= Config.NAILS_SEARCH_TIMEOUT
@@ -302,6 +308,8 @@ function Phases.HandleNailsSearch()
 		-- least one full elevation scan (a complete up+down sweep) has been done - if the
 		-- sweep can't finish within the timeout, let it complete before giving up.
 		Log("Jester Radar | Nails search: timed out, nothing lockable - resuming scan")
+		Config.ConsoleLog(string.format("%.1f NAILS timeout -> resume scan (scans=%s)",
+			now:ConvertTo(s).value, tostring(State.nails_search_scans_completed)))
 		State.nails_search_active = false
 		State.nails_search_start = nil
 		State.current_scan_zone = nil -- forces PREPARE_SCAN_PATTERN next
@@ -528,11 +536,16 @@ function Phases.IdentifyTargets()
 	local now = Utilities.GetTime().mission_time
 	local count = 0
 	local already_identified_count = 0
+	local total = 0     -- diagnostic: all radar_targets this pass
+	local notnoise = 0  -- diagnostic: alive, above the hit threshold
+	local suppressed = 0 -- diagnostic: absorbed silently (recently forgotten)
 	local first_contact
 	for id, target in pairs(radar_targets) do
+		total = total + 1
 		local is_not_noise = target.number_of_hits >= 2 and not target.found_in_acq_or_trk
 		local is_new = State.identified_targets[id] == nil and State.processed_targets[id] == nil
 		if is_not_noise and IsObjectWithIdAlive(id) then
+			notnoise = notnoise + 1
 			if is_new and was_recently_forgotten(id, now) then
 				-- Contact we just forgot after a dropped/aborted lock: keep it tracked with
 				-- fresh data (so it stays lockable/highlightable) but stay quiet for the
@@ -542,6 +555,7 @@ function Phases.IdentifyTargets()
 				-- is announced fresh like any other contact - Jester keeps detecting it.
 				State.all_targets[id] = target
 				already_identified_count = already_identified_count + 1
+				suppressed = suppressed + 1
 			elseif is_new then
 				State.unidentified_new_targets[id] = target
 				State.all_targets[id] = target
@@ -555,6 +569,11 @@ function Phases.IdentifyTargets()
 			end
 		end
 	end
+
+	Config.ConsoleLog(string.format(
+		"%.1f IDENTIFY total=%d notnoise=%d new=%d suppressed=%d known=%d srange=%s",
+		now:ConvertTo(s).value, total, notnoise, count, suppressed, already_identified_count,
+		tostring(State.search_range)))
 
 	local task = Task:new()
 	task:SetPriority(1)

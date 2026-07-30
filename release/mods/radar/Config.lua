@@ -219,4 +219,35 @@ Config.SCAN_ZONE_SEQUENCE_25NM = {
 	{ name = "25NM_DOWN_5K", range = nm25_ref, altitude = ft(-5000),  is_relative = true },
 }
 
+-- Lightweight file logger (Jester's built-in Log() only reaches the in-sim console,
+-- which isn't persisted). Writes to <writedir>/jester_console.log. Truncated once per
+-- Lua session so each flight starts a clean log instead of growing without bound.
+-- Toggle with Config.JESTER_CONSOLE_LOG. Call via Config.ConsoleLog("...").
+Config.JESTER_CONSOLE_LOG = true
+local function console_log_path()
+	local base
+	pcall(function() if lfs and lfs.writedir then base = lfs.writedir() end end)
+	if base then return base .. "jester_console.log" end
+	return "C:/Users/Patrick/Saved Games/DCS_F4E/jester/jester_console.log"
+end
+local CONSOLE_LOG_FILE = console_log_path()
+local console_log_started = false
+function Config.ConsoleLog(msg)
+	if not Config.JESTER_CONSOLE_LOG then
+		return
+	end
+	local mode = "a"
+	if not console_log_started then
+		mode = "w" -- truncate on the first write of the session
+		console_log_started = true
+	end
+	pcall(function()
+		local f = io.open(CONSOLE_LOG_FILE, mode)
+		if f then
+			f:write(msg .. "\n")
+			f:close()
+		end
+	end)
+end
+
 return Config

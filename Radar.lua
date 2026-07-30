@@ -55,6 +55,11 @@ local Radar = {}
 -- it off afterwards via the Radar wheel / radar_auto_focus.
 local forced_auto_focus_on = false
 
+-- Diagnostic tracing (jester_console.log): remember the last phase we logged and a
+-- heartbeat accumulator so we log on every phase change plus at least every 2s.
+local dbg_last_phase = nil
+local dbg_hb = s(0)
+
 function Radar.UpdateDiveToss()
 	local move_radar_cursor = GetJester().behaviors[MoveRadarCursor]
 
@@ -352,6 +357,26 @@ function Radar.Tick()
 
 	Radar.UpdateTargetData()
 	Radar.UpdateTargetHighlight()
+
+	-- Diagnostic trace: log every phase change, plus a heartbeat at least every 2s, so we
+	-- can see whether the normal scan cycle is progressing (…SCAN_SCREEN/IDENTIFY/CALL_OUT…)
+	-- or is stuck/starved (e.g. pinned on HANDLE_NAILS_SEARCH or HANDLE_TARGET_LOCKING).
+	dbg_hb = dbg_hb + Utilities.GetTime().dt
+	if State.current_phase ~= dbg_last_phase or dbg_hb >= s(2) then
+		local n_targets = 0
+		for _ in pairs(radar_targets or {}) do n_targets = n_targets + 1 end
+		local waiting = State.task ~= nil and not State.task:IsFinished()
+		Config.ConsoleLog(string.format(
+			"%.1f RADAR phase=%s wait=%s nails=%s lock=%s curlock=%s ntgt=%d srange=%s prange=%s",
+			Utilities.GetTime().mission_time:ConvertTo(s).value,
+			tostring(State.current_phase), tostring(waiting),
+			tostring(State.nails_search_active),
+			State.target_to_lock and tostring(State.target_to_lock.id) or "-",
+			State.target_currently_locked and tostring(State.target_currently_locked.id) or "-",
+			n_targets, tostring(State.search_range), tostring(State.pilot_requested_range)))
+		dbg_hb = s(0)
+		dbg_last_phase = State.current_phase
+	end
 
 	if State.task ~= nil and not State.task:IsFinished() then
 		-- Waiting for a task to finish

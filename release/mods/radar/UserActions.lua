@@ -6,6 +6,7 @@ local Api = require('radar.Api')
 local MoveRadarCursor = require('radar.MoveRadarCursor')
 local MoveRadarAntenna = require('radar.MoveRadarAntenna')
 local BraCalls = require('other.BraCalls')
+local Utilities = require('base.Utilities')
 
 local UserActions = {}
 
@@ -120,14 +121,22 @@ end
 function UserActions.LockTarget(task, target_id)
 	task:SetPriority(1)
 	target_id = tonumber(target_id)
-	local target = radar_targets[target_id] or State.all_targets[target_id]
+	local fresh = radar_targets[target_id]
+	local target = fresh or State.all_targets[target_id]
 
 	if not State.is_active or not Api.IsPowered() or not target then
 		Log("CantDo: Lock Target - Radar is not active/powered or target is unknown")
+		Config.ConsoleLog(string.format("%.1f LOCKREQ id=%s -> CantDo (no target)",
+			Utilities.GetTime().mission_time:ConvertTo(s).value, tostring(target_id)))
 		task:CantDo()
 		return
 	end
 	Log("LOCK " .. Api.TargetToString(target))
+	-- Diagnostic: was this a live radar contact, or only a stale all_targets snapshot?
+	Config.ConsoleLog(string.format("%.1f LOCKREQ id=%s src=%s az=%s rng=%s",
+		Utilities.GetTime().mission_time:ConvertTo(s).value, tostring(target_id),
+		fresh and "radar_targets(fresh)" or "all_targets(STALE)",
+		tostring(target.scan_azimuth), tostring(target.scan_range)))
 
 	-- Abort whatever is going on and reset to start a lock
 	State.Reset()
