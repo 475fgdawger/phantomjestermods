@@ -33,6 +33,11 @@ ObserveRWR.maximum_altitude_for_aaa_report = ft(10000)
 -- the arc (see MaybeSearchOnArcEntry). The per-contact cooldown stops a contact sitting
 -- on the arc boundary from re-triggering a search every pass.
 ObserveRWR.arc_reentry_cooldown = s(15)
+-- Arc-entry searches wait until the aircraft's heading has settled (turn rate at or
+-- below this) so the search aims at a stable bearing rather than one smearing through
+-- the arc during a hard turn. Heading rate comes from the "gods_angular_velocity_ned"
+-- observation (its Down/z component is the yaw rate).
+ObserveRWR.heading_stable_max_rate = 5 -- degrees per second
 
 -- Task priorities. Jester sorts pending tasks by priority (Jester.lua), so at
 -- the previous default of 0 these call-outs queued behind all other chatter and,
@@ -69,6 +74,9 @@ end
 
 -- Forward arc for the directed radar search: 10, 11, 12, 1, 2 o'clock.
 local FORWARD_ARC_HOURS = { [10] = true, [11] = true, [12] = true, [1] = true, [2] = true }
+
+local RAD2DEG = 180 / math.pi
+local HEADING_RATE_ALPHA = 0.3 -- EMA smoothing for the derived heading rate (0..1)
 
 local function contains_id(table, id)
 	if table == nil then
@@ -269,36 +277,88 @@ function ObserveRWR:UpdateContactActivity(singer_task, index, contact)
     return emitted
 end
 
--- Fires a directed nails-search when a known airborne contact transitions INTO the
--- forward arc (10-2 o'clock) - i.e. it was outside the arc last pass and is inside it
--- now. Tracks each contact's last hour to detect that edge, and rate-limits per contact
--- (arc_reentry_cooldown) so a contact hovering on the boundary can't spam searches.
+-- Smoothed heading (yaw) rate in degrees/second, from the Down component of the
+-- "gods_angular_velocity_ned" observation (radians/second). Returns nil if it can't
+-- be read this pass; the caller keeps the previous estimate in that case.
+local function InstantHeadingRateDps()
+    local av = GetJester().awareness:GetObservation("gods_angular_velocity_ned")
+    if av == nil then
+        return nil
+    end
+    local ok, z = pcall(function() return av.z.value end) -- z = Down axis = yaw rate (rad/s)
+    if not ok or type(z) ~= 'number' then
+        return nil
+    end
+    return math.abs(z) * RAD2DEG
+end
+
+function ObserveRWR:UpdateHeadingRate()
+    local inst = InstantHeadingRateDps()
+    if inst == nil then
+        return -- keep last estimate when the observation is momentarily unavailable
+    end
+    if self.heading_rate_dps == nil then
+        self.heading_rate_dps = inst
+    else
+        self.heading_rate_dps = self.heading_rate_dps + HEADING_RATE_ALPHA * (inst - self.heading_rate_dps)
+    end
+end
+
+-- Requests a directed nails-search when a known airborne contact drifts INTO the
+-- forward arc (10-2 o'clock). The entry is *armed* on the outside->inside edge, then
+-- the search is *fired* on the first later pass where the aircraft heading has settled
+-- (turn rate <= heading_stable_max_rate), aimed at the contact's CURRENT bearing at
+-- that moment - not where it first crossed the arc boundary. Per-contact cooldown and
+-- friendly/airborne filtering as before.
 function ObserveRWR:MaybeSearchOnArcEntry(index, contact)
     local known = self.known_contacts[index]
     local h     = tonumber(contact.hour)
     local prev  = known.last_hour
     known.last_hour = h -- always keep the latest hour for the next pass's edge detection
 
+    -- Non-airborne / friendly contacts never search; disarm any pending entry.
     if contact.category_1 ~= 'airborne' or is_friendly(contact) then
-        return -- only airborne, non-friendly emitters warrant a search
+        known.arc_search_armed = false
+        return
     end
 
     local in_arc     = h ~= nil and FORWARD_ARC_HOURS[h] == true
     local was_in_arc = prev ~= nil and FORWARD_ARC_HOURS[prev] == true
-    if not (in_arc and not was_in_arc) then
-        return -- not a fresh entry into the forward arc
+
+    if not in_arc then
+        known.arc_search_armed = false -- left the arc before we could search; disarm
+        return
     end
 
+    -- Fresh outside->inside crossing arms a search (to be fired once heading settles).
+    if not was_in_arc then
+        known.arc_search_armed = true
+    end
+    if not known.arc_search_armed then
+        return -- already handled this entry, or never entered
+    end
+
+    -- Wait for the heading to settle so the search aims at a stable bearing.
+    if (self.heading_rate_dps or 0) > self.heading_stable_max_rate then
+        return -- still turning; stay armed and try again next pass
+    end
+
+    -- Rate-limit repeat searches on the same contact.
     local now = Utilities.GetTime().mission_time
     if known.last_arc_search and (now - known.last_arc_search) < self.arc_reentry_cooldown then
-        return -- searched this contact into the arc very recently; don't spam
+        known.arc_search_armed = false
+        return
     end
+
     known.last_arc_search = now
-    Dispatch("radar_nails_search", tostring(h))
+    known.arc_search_armed = false
+    Dispatch("radar_nails_search", tostring(h)) -- h is the contact's CURRENT hour
 end
 
 function ObserveRWR:Constructor()
 	Behavior.Constructor(self)
+
+	self.heading_rate_dps = nil -- smoothed |yaw rate| in deg/s; gates arc-entry searches
 
 	local check_screen = function()
         if rwr_bit_test then
@@ -414,6 +474,7 @@ function ObserveRWR:Constructor()
 end
 
 function ObserveRWR:Tick()
+    self:UpdateHeadingRate() -- per-frame so the arc-entry gate has a fresh turn-rate estimate
     if self.check_urge then
         self.check_urge:Tick()
     end
