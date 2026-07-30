@@ -234,11 +234,15 @@ function Phases.HandleNailsSearch()
 		-- One-time setup for this search: narrow scan, search display range.
 		State.nails_search_start = now
 		State.nails_search_sweep_up = true
+		State.nails_search_scans_completed = 0
 		Log("Jester Radar | Nails search: begin at azimuth " .. tostring(azimuth) .. ", sky gain " .. tostring(sky))
 		task:ClickFast("Radar Scan Type", Config.scan_type.narrow, true)
 		    :ClickFast("Radar Range", Config.NAILS_SEARCH_DISPLAY_RANGE, true)
-	elseif (now - State.nails_search_start) >= Config.NAILS_SEARCH_TIMEOUT then
-		-- Timed out without resolving anything? Give up, resume scan.
+	elseif (now - State.nails_search_start) >= Config.NAILS_SEARCH_TIMEOUT
+			and (State.nails_search_scans_completed or 0) >= 1 then
+		-- Timed out without resolving anything? Give up, resume scan. But only once at
+		-- least one full elevation scan (a complete up+down sweep) has been done - if the
+		-- sweep can't finish within the timeout, let it complete before giving up.
 		Log("Jester Radar | Nails search: timed out, nothing lockable - resuming scan")
 		State.nails_search_active = false
 		State.nails_search_start = nil
@@ -250,11 +254,16 @@ function Phases.HandleNailsSearch()
 
 	-- Aim azimuth via the acquisition-gate cursor; sweep elevation via the antenna wheel;
 	-- hold gain at the calibrated sky gain.
+	local sweeping_up = State.nails_search_sweep_up
 	local sweep_altitude = Config.NAILS_SEARCH_ELEVATION_SWEEP
-	if not State.nails_search_sweep_up then
+	if not sweeping_up then
 		sweep_altitude = ft(0) - Config.NAILS_SEARCH_ELEVATION_SWEEP
 	end
-	State.nails_search_sweep_up = not State.nails_search_sweep_up
+	State.nails_search_sweep_up = not sweeping_up
+	if not sweeping_up then
+		-- Just finished the down half, so one full up+down elevation scan is complete.
+		State.nails_search_scans_completed = (State.nails_search_scans_completed or 0) + 1
+	end
 
 	move_radar_cursor:MoveCursorTo(azimuth, Config.NAILS_SEARCH_AIM_RANGE)
 	move_radar_antenna:MoveAntennaTo(Config.NAILS_SEARCH_AIM_RANGE, sweep_altitude, true)

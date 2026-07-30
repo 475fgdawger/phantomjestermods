@@ -158,7 +158,7 @@ Config.NAILS_SEARCH_HOUR_AZIMUTH = { -- forward-arc clock hours -> antenna azimu
 	[1]  = deg(30),
 	[2]  = deg(60),
 }
-Config.NAILS_SEARCH_TIMEOUT = s(30)            -- give up the directed search after this long if nothing lockable resolves
+Config.NAILS_SEARCH_TIMEOUT = s(15)            -- give up the directed search after this long, BUT never before one full elevation scan (a complete up+down sweep) has been done - see Phases.HandleNailsSearch
 Config.NAILS_SEARCH_DWELL = s(2.5)             -- dwell time at each elevation sweep step
 Config.NAILS_SEARCH_DISPLAY_RANGE = Config.range.nm_50 -- display range while searching
 Config.NAILS_SEARCH_AIM_RANGE = NM(25)         -- range used to aim the acquisition point

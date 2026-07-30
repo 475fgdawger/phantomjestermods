@@ -37,10 +37,11 @@ State.target_currently_locked = nil -- if set, Jester knows that a target is cur
 -- event handler in UserActions.lua when a forward-arc nails is detected while free-scanning.
 State.nails_search_active = false -- whether a directed nails-search is currently running
 State.nails_search_azimuth = nil -- antenna azimuth (deg) of the nails bearing being searched
-State.nails_search_gain = nil -- current coarse gain during the gain-walk (nil until setup runs)
+State.nails_search_start = nil -- mission_time the directed nails-search began (nil until setup runs); gates the timeout
 State.nails_search_sweep_up = true -- elevation sweep direction toggle, flipped each dwell step
+State.nails_search_scans_completed = 0 -- count of full up+down elevation scans done this search; the timeout won't fire until this is >= 1
 
-State.search_gain = nil -- current coarse gain during the normal-search gain hunt (see Phases.AdjustGain)
+State.range_dwell_start = nil -- mission_time the current display range began (range-sweep clock)
 State.search_range = nil -- current display range within the normal-search range sweep (nil = follow pilot_requested_range)
 State.nm25_sweep_complete = false -- whether the 25 nm elevation bar scan has finished all bars; gates ranging out of 25 nm
 
@@ -91,9 +92,10 @@ function State.Reset()
 	-- Abort any directed nails-search on reset.
 	State.nails_search_active = false
 	State.nails_search_azimuth = nil
-	State.nails_search_gain = nil
+	State.nails_search_start = nil
 	State.nails_search_sweep_up = true
-	State.search_gain = nil
+	State.nails_search_scans_completed = 0
+	State.range_dwell_start = nil
 	State.search_range = nil
 	State.nm25_sweep_complete = false
 
