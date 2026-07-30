@@ -213,8 +213,13 @@ function Phases.HandleNailsSearch()
 		State.nails_search_active = false
 		State.nails_search_start = nil
 
+		-- NOTE: deliberately do NOT set pilot_requested_target_to_highlight here. That
+		-- flag means "the pilot hand-picked this target - stop auto-selecting and stick
+		-- to it", which suppressed auto-focus AND the normal call-out cycle even after
+		-- this lock ended (Jester would steady on a contact but announce nothing).
+		-- target_to_lock alone drives the auto-lock via HANDLE_TARGET_LOCKING, and
+		-- leaving pilot_requested unset lets Jester resume normal scan+callouts afterwards.
 		State.target_to_highlight = target
-		State.pilot_requested_target_to_highlight = target
 		State.target_to_focus_on = target
 		State.target_to_lock = target
 		move_radar_cursor:FollowTarget(target)
