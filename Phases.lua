@@ -21,6 +21,43 @@ local last_logged_auto_gain = nil
 -- Larger than any set/quantization error, smaller than the sky<->ground gain gap.
 local GAIN_EPSILON = 0.02
 
+-- Forget a target entirely (after a lock drops or a lock attempt is abandoned): drop it
+-- from every tracking list and clear any selection/cursor pointing at it. Without this,
+-- the target lingered in State.all_targets and stayed highlighted, so a later context-lock
+-- re-selected it and LockTarget re-locked it from that STALE snapshot - same id, bearing,
+-- range and altitude - even after the jet had maneuvered. Forgotten here, it is re-acquired
+-- fresh by the normal scan if it is really still out there.
+local function forget_target(id)
+	if id == nil then
+		return
+	end
+	State.unidentified_new_targets[id] = nil
+	State.identified_targets[id] = nil
+	State.processed_targets[id] = nil
+	State.all_targets[id] = nil
+
+	if State.target_to_highlight and State.target_to_highlight.id == id then
+		State.target_to_highlight = nil
+	end
+	if State.pilot_requested_target_to_highlight and State.pilot_requested_target_to_highlight.id == id then
+		State.pilot_requested_target_to_highlight = nil
+	end
+	if State.target_to_focus_on and State.target_to_focus_on.id == id then
+		State.target_to_focus_on = nil
+	end
+
+	local move_radar_cursor = GetJester().behaviors[MoveRadarCursor]
+	if move_radar_cursor then
+		move_radar_cursor:ClearTarget()
+	end
+	local move_radar_antenna = GetJester().behaviors[MoveRadarAntenna]
+	if move_radar_antenna then
+		move_radar_antenna:ClearTarget()
+	end
+
+	Api.UpdateTargetsPriority() -- rebuild the bandit/non-bandit priority views without it
+end
+
 function Phases.HandleTargetLocking()
 	local task = Task:new()
 	task:SetPriority(1)
@@ -49,6 +86,7 @@ function Phases.HandleTargetLocking()
 		State.time_spent_trying_to_lock_bandit = State.time_spent_trying_to_lock_bandit + Utilities.GetTime().dt
 		if State.time_spent_trying_to_lock_bandit > Config.MAX_TRYING_TO_LOCK_BANDIT_TIME then
 			--Log("Cant find target... giving up")
+			forget_target(target.id) -- don't keep re-locking this stale contact
 			State.target_to_lock = nil
 			State.target_currently_locked = nil
 			State.time_spent_trying_to_lock_bandit = s(0)
@@ -118,6 +156,7 @@ function Phases.HandleTargetLocking()
 			State.wrong_lock_attempts = State.wrong_lock_attempts + 1
 			if State.wrong_lock_attempts > Config.MAX_WRONG_LOCK_ATTEMPTS then
 				--Log("Wrong locks... giving up")
+				forget_target(target.id) -- don't keep re-locking this stale contact
 				State.target_to_lock = nil
 				State.target_currently_locked = nil
 				State.wrong_lock_attempts = 0
@@ -136,6 +175,7 @@ function Phases.HandleTargetLocking()
 		local lost_lock = not Api.IsInTrackState() or not Api.HasSkinTrack()
 		if lost_lock then
 			--Log("Lost lock")
+			forget_target(target.id) -- don't keep re-locking this stale contact
 			State.target_to_lock = nil
 			State.target_currently_locked = nil
 			return task:Say("radar/lostlock")
