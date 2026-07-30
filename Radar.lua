@@ -97,11 +97,11 @@ function Radar.UpdateBoresightOrCageMode()
 		end
 	end
 
-	-- Cage/boresight gain reset is a separate gain path from Phases.AdjustGain;
-	-- gate it behind the same toggle so "auto gain off" means Jester never forces
-	-- the gain (and stops the recurring "--Click 'Radar Gain Coarse': 0.5" log).
+	-- Cage/boresight gain reset is a separate gain path from Phases.AdjustGain; gate it
+	-- behind the same toggle so "auto gain off" means Jester never forces the gain, and
+	-- behind the manual-override defer so it doesn't fight a bound gain axis either.
 	local gain_diff = Math.Abs(Api.GetCurrentGainCoarse() - 0.5)
-	if State.is_auto_gain_allowed and gain_diff > 0.05 then
+	if State.is_auto_gain_allowed and not State.gain_deferred_to_manual and gain_diff > 0.05 then
 		local task = Task:new()
 				:ClickFast("Radar Gain Coarse", 0.5)
 		GetJester():AddTask(task)

@@ -21,6 +21,50 @@ local last_logged_auto_gain = nil
 -- Larger than any set/quantization error, smaller than the sky<->ground gain gap.
 local GAIN_EPSILON = 0.02
 
+-- Single point through which Jester drives the coarse gain, so override detection has one
+-- source of truth for "what we last commanded". Records the value/time, then clicks it.
+function Phases.CommandCoarseGain(task, value)
+	State.gain_last_commanded = value
+	State.gain_last_command_time = Utilities.GetTime().mission_time
+	return task:ClickFast("Radar Gain Coarse", value, true)
+end
+
+-- Behavioral detection of an external coarse-gain override (a bound HOTAS gain axis, or the
+-- player working the knob). We can't read DCS input bindings from here, but if the knob keeps
+-- sitting a STABLE distance away from what Jester last commanded, something else owns it.
+-- After GAIN_OVERRIDE_STRIKES confirmed cycles, defer: Jester stops driving gain and leaves
+-- the player's setting alone. Sticky for the session (an axis binding won't change mid-flight).
+function Phases.DetectGainOverride()
+	if State.gain_deferred_to_manual then return end
+	if State.gain_last_commanded == nil or State.gain_last_command_time == nil then return end
+	-- Let the last command settle before judging it.
+	if (Utilities.GetTime().mission_time - State.gain_last_command_time) < Config.GAIN_OVERRIDE_GRACE then
+		return
+	end
+
+	local current = Api.GetCurrentGainCoarse()
+	if Math.Abs(current - State.gain_last_commanded) > Config.GAIN_OVERRIDE_EPS then
+		-- Off target. Count it only if it's the SAME foreign value as before - an axis rests
+		-- at a fixed position, whereas transient settling/switching wanders.
+		if State.gain_override_value ~= nil and Math.Abs(current - State.gain_override_value) <= Config.GAIN_OVERRIDE_EPS then
+			State.gain_override_strikes = State.gain_override_strikes + 1
+		else
+			State.gain_override_strikes = 1
+			State.gain_override_value = current
+		end
+	else
+		State.gain_override_strikes = 0
+		State.gain_override_value = nil
+	end
+
+	if State.gain_override_strikes >= Config.GAIN_OVERRIDE_STRIKES then
+		State.gain_deferred_to_manual = true
+		Log("Jester Radar | Coarse gain under external (axis/manual) control - deferring; Jester will not drive gain")
+		Config.ConsoleLog(string.format("%.1f GAIN deferred to manual (knob=%.3f, last cmd=%.3f)",
+			Utilities.GetTime().mission_time:ConvertTo(s).value, current, State.gain_last_commanded))
+	end
+end
+
 -- Forget a target entirely (after a lock drops or a lock attempt is abandoned): drop it
 -- from every tracking list and clear any selection/cursor pointing at it. Without this,
 -- the target lingered in State.all_targets and stayed highlighted, so a later context-lock
@@ -334,7 +378,11 @@ function Phases.HandleNailsSearch()
 	move_radar_cursor:MoveCursorTo(azimuth, Config.NAILS_SEARCH_AIM_RANGE)
 	move_radar_antenna:MoveAntennaTo(Config.NAILS_SEARCH_AIM_RANGE, sweep_altitude, true)
 
-	return task:ClickFast("Radar Gain Coarse", sky, true):Wait(Config.NAILS_SEARCH_DWELL)
+	-- Hold sky gain during the sweep, unless the player's axis/knob owns the gain.
+	if not State.gain_deferred_to_manual then
+		Phases.CommandCoarseGain(task, sky)
+	end
+	return task:Wait(Config.NAILS_SEARCH_DWELL)
 end
 
 -- Position of a display range in the descending SEARCH_RANGE_LADDER, or nil if the
@@ -755,6 +803,11 @@ function Phases.AdjustGain()
 		return nil
 	end
 
+	-- A bound gain axis / manual knob owns the gain (detected below): defer to the player.
+	if State.gain_deferred_to_manual then
+		return nil
+	end
+
 	-- Focusing a target, or a non-swept display range (5/10 nm): defer to backend gain.
 	local display_range = Phases.GetSearchRange()
 	if State.target_to_focus_on or not ladder_index(display_range) then
@@ -777,6 +830,13 @@ function Phases.AdjustGain()
 		gain = Config.GROUND_CLUTTER_GAIN
 	end
 
+	-- Did our last command stick? If the knob keeps getting pulled to a stable foreign value,
+	-- an axis/manual control owns the gain - defer and stop fighting it.
+	Phases.DetectGainOverride()
+	if State.gain_deferred_to_manual then
+		return nil
+	end
+
 	-- Already at the target gain: don't re-click every cycle. This is what was
 	-- producing the recurring "Click 'Radar Gain Coarse': x" log spam.
 	if Math.Abs(Api.GetCurrentGainCoarse() - gain) <= GAIN_EPSILON then
@@ -785,7 +845,7 @@ function Phases.AdjustGain()
 
 	local task = Task:new()
 	task:SetPriority(1)
-	return task:ClickFast("Radar Gain Coarse", gain, true)
+	return Phases.CommandCoarseGain(task, gain)
 end
 
 return Phases

@@ -27,6 +27,14 @@ State.pilot_requested_scan_type = Config.scan_type.wide -- the scan type to use 
 State.is_auto_focus_allowed = true -- whether Jester is allowed to auto-highlight and focus targets within threat range
 State.is_auto_gain_allowed = true -- whether Jester is allowed to auto-adjust radar gain / clutter interest range (see Phases.AdjustGain). Set to false to have Jester leave gain alone by default. Toggled via the "radar_auto_gain" event / Radar wheel. NOT reset by State.Reset() (survives locks/scans), like is_auto_focus_allowed.
 
+-- External coarse-gain override detection (see Phases.DetectGainOverride / Config.GAIN_OVERRIDE_*).
+-- All persist across State.Reset() (a per-session/binding fact, like is_auto_gain_allowed).
+State.gain_last_commanded = nil     -- coarse gain value Jester last commanded (baseline for override detection)
+State.gain_last_command_time = nil  -- mission_time of that command (for the settle grace)
+State.gain_override_value = nil     -- the stable foreign value the knob keeps returning to while overridden
+State.gain_override_strikes = 0     -- consecutive confirmed-override cycles
+State.gain_deferred_to_manual = false -- once set, Jester stops driving coarse gain and defers to the player's axis/knob
+
 State.target_to_highlight = nil -- if set, the given target will be highlighted, or "selected"; this also includes automatic cursor movement
 State.pilot_requested_target_to_highlight = nil -- if set, Jester will stop automatically selecting high priority targets for highlight and stick to the selected target
 State.target_to_focus_on = nil -- if set, the given target will be focused (must be set with State.target_to_highlight); aborts scan, points antenna at target, goes narrow view, adjusts display range

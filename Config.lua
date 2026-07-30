@@ -175,6 +175,16 @@ Config.NAILS_SEARCH_MIN_HITS = 2                -- radar hits before a contact i
 -- (State.is_auto_gain_allowed). See Phases.AdjustGain. Tune SKY_GAIN to taste.
 Config.SKY_GAIN            = 0.62793 -- coarse gain held for all sky searches (incl. nails search)
 Config.GROUND_CLUTTER_GAIN = 0.5     -- coarse gain used when the search produces ground clutter
+
+-- External coarse-gain override detection. DCS input bindings can't be read from here, but
+-- a bound HOTAS gain axis (or the player working the knob) re-applies the gain every frame
+-- and wins over Jester's clickable writes. We detect that behaviorally: if the knob keeps
+-- sitting a STABLE distance away from what Jester last commanded, an external control owns
+-- it, so Jester defers (stops driving gain) and leaves the player's setting alone. With no
+-- such override, Jester drives SKY_GAIN/GROUND_CLUTTER_GAIN as normal.
+Config.GAIN_OVERRIDE_EPS     = 0.05    -- how far the knob must sit from Jester's commanded value to count as overridden
+Config.GAIN_OVERRIDE_STRIKES = 4       -- consecutive AdjustGain cycles at a stable foreign value before deferring
+Config.GAIN_OVERRIDE_GRACE   = s(0.5)  -- settle time after a command before a mismatch is judged
 Config.RANGE_DWELL        = s(15)  -- how long to search each display range before stepping (range-sweep clock)
 -- Descending ladder of the ranges the sweep/gain-hunt run at. The pilot's range is
 -- the sweep ceiling; ranges not listed (5/10 nm) get the backend gain and no sweep.
