@@ -27,7 +27,7 @@ local GAIN_EPSILON = 0.02
 -- re-selected it and LockTarget re-locked it from that STALE snapshot - same id, bearing,
 -- range and altitude - even after the jet had maneuvered. Forgotten here, it is re-acquired
 -- fresh by the normal scan if it is really still out there.
-local function forget_target(id)
+function Phases.ForgetTarget(id)
 	if id == nil then
 		return
 	end
@@ -107,7 +107,7 @@ function Phases.HandleTargetLocking()
 		State.time_spent_trying_to_lock_bandit = State.time_spent_trying_to_lock_bandit + Utilities.GetTime().dt
 		if State.time_spent_trying_to_lock_bandit > Config.MAX_TRYING_TO_LOCK_BANDIT_TIME then
 			--Log("Cant find target... giving up")
-			forget_target(target.id) -- don't keep re-locking this stale contact
+			Phases.ForgetTarget(target.id) -- don't keep re-locking this stale contact
 			State.target_to_lock = nil
 			State.target_currently_locked = nil
 			State.time_spent_trying_to_lock_bandit = s(0)
@@ -177,7 +177,7 @@ function Phases.HandleTargetLocking()
 			State.wrong_lock_attempts = State.wrong_lock_attempts + 1
 			if State.wrong_lock_attempts > Config.MAX_WRONG_LOCK_ATTEMPTS then
 				--Log("Wrong locks... giving up")
-				forget_target(target.id) -- don't keep re-locking this stale contact
+				Phases.ForgetTarget(target.id) -- don't keep re-locking this stale contact
 				State.target_to_lock = nil
 				State.target_currently_locked = nil
 				State.wrong_lock_attempts = 0
@@ -196,7 +196,7 @@ function Phases.HandleTargetLocking()
 		local lost_lock = not Api.IsInTrackState() or not Api.HasSkinTrack()
 		if lost_lock then
 			--Log("Lost lock")
-			forget_target(target.id) -- don't keep re-locking this stale contact
+			Phases.ForgetTarget(target.id) -- don't keep re-locking this stale contact
 			State.target_to_lock = nil
 			State.target_currently_locked = nil
 			return task:Say("radar/lostlock")

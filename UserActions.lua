@@ -7,6 +7,7 @@ local MoveRadarCursor = require('radar.MoveRadarCursor')
 local MoveRadarAntenna = require('radar.MoveRadarAntenna')
 local BraCalls = require('other.BraCalls')
 local Utilities = require('base.Utilities')
+local Phases = require('radar.Phases')
 
 local UserActions = {}
 
@@ -131,11 +132,31 @@ function UserActions.LockTarget(task, target_id)
 		task:CantDo()
 		return
 	end
+
+	-- Refuse to lock a contact that isn't currently painted unless its last radar hit is
+	-- very recent (a brief blink - the lock flow will wait for it). A persistently stale
+	-- all_targets snapshot means the jet has maneuvered away; committing the lock there
+	-- would send Jester chasing a ghost at an outdated bearing/range for the whole
+	-- lock-attempt window. Forget it instead so it stops being re-selected.
+	if not fresh then
+		local now = Utilities.GetTime().mission_time
+		local age = target.last_hit_timestamp and (now - target.last_hit_timestamp) or nil
+		if age == nil or age > Config.STALE_LOCK_MAX_AGE then
+			Log("CantDo: Lock Target - contact no longer painted (stale snapshot)")
+			Config.ConsoleLog(string.format("%.1f LOCKREQ id=%s -> REFUSED stale (age=%s)",
+				now:ConvertTo(s).value, tostring(target_id),
+				age and string.format("%.1fs", age:ConvertTo(s).value) or "nil"))
+			Phases.ForgetTarget(target_id)
+			task:CantDo()
+			return
+		end
+	end
+
 	Log("LOCK " .. Api.TargetToString(target))
-	-- Diagnostic: was this a live radar contact, or only a stale all_targets snapshot?
+	-- Diagnostic: was this a live radar contact, or only a (recent) all_targets snapshot?
 	Config.ConsoleLog(string.format("%.1f LOCKREQ id=%s src=%s az=%s rng=%s",
 		Utilities.GetTime().mission_time:ConvertTo(s).value, tostring(target_id),
-		fresh and "radar_targets(fresh)" or "all_targets(STALE)",
+		fresh and "radar_targets(fresh)" or "all_targets(recent)",
 		tostring(target.scan_azimuth), tostring(target.scan_range)))
 
 	-- Abort whatever is going on and reset to start a lock
