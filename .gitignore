@@ -1,0 +1,2 @@
+# Local Discord webhook URL for scripts/announce-release.sh (never commit)
+scripts/.discord_webhook
