@@ -1,15 +1,19 @@
 # phantomjestermods
 mods for DCS F-4E Phantom Jester
 
-Jester Combat Core
+
 
 ### Jester Radar (A2A search)
-- **Range + gain sweep** during normal search: works down from your selected display range to 25 nm, Gain is .62783 Coarse Knob for all searched, adjusting down to .5 when ground clutter is detected.
+- **Range + gain sweep** during normal search: works down from your selected display range to 25 nm, Gain is .62783 Coarse Knob for all searched, adjusting down to .5 when ground clutter is detected. There are three operational options.
+  1. Full pilot control of COARSE GAIN by binding a COARSE GAIN Axis. Auto Gain on or off will not matter
+  2. Bind COARSE GAIN buttons (Inc and Dec) and turn Auto Gain off in the Jester Wheel for pilot control of gain.
+  3. Auto Gain On for Jester Gain control (If no pilot COARSE GAIN AXIS exists) 
+- ***NOTE: If you bind a COARSE GAIN AXIS from the pilot seat, you will have control of the Radar Gain at all times. This will override all Jester Gain functions. Unbind and restart if you do not want this behavior***
 - **25 nm manual bar scan**: elevation bars from +30,000 ft down to −5,000 ft (referenced at 30 nm); Jester completes the full vertical sweep before ranging out, and stops at CENTER when flying low.
 - **Low-altitude cutoff**: skips the below-level elevation zones at/below 5,000 ft MSL so he doesn't scan into the ground.
 - **Auto-gain toggle** via the Radar wheel "Auto Gain" item / `radar_auto_gain` event — gates all Jester gain adjustment (including the cage/boresight reset).
 - **Auto-focus forced on** at startup (no pilot action needed; still toggleable).
-- **Nails-triggered directed search**: a forward-arc (10–2 o'clock) RWR nails makes Jester dwell on the bearing, sweep elevation, and walk gain to resolve and auto-lock a contact.
+- **Nails-triggered directed search**: a forward-arc (10–2 o'clock) RWR nails makes Jester dwell on the bearing, sweep elevation, and walk gain to resolve and auto-lock a contact. Jester will also initiate a nails bearing search when an existing nail enters the forward quarter and aircraft heading stabilises.
 
 ### RWR (AN/ALR-46) call-outs
 - Fixed the friendly filter, phrase ordering/priorities, and duplicate same-clock call suppression.
