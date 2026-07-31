@@ -25,7 +25,7 @@ This mod is best used with the Jester Sounds mod, which abbreviates the relevant
 
 Known issues:
 
-Jester talks constantly during a multiple target dogfight. This is both good and bad.
+Jester no longer repeats call like he used to but he will talk a lot in a fight.
 
 Some aircraft do not have type sound files. Jester will call these as "bogey". I am using the "Hawk" sound file as a stand in for "Skyhawk". Be careful, it might be a Hawk or a Skyhawk. I am using "Sabre" Sound file for both the F-86 and the F-100 until there is a Super Sabre sound file as well.
 
@@ -33,12 +33,12 @@ There are no plural type sound files so 2 aircraft of the same type in the same 
 
 Jester will also call fuel state occasionally if he sees a bandit and you are in afterburner.
 
-This mod is install in your Saved Games Jester mods path.
+This mod is installed in your Saved Games Jester mods path.
 
 
-Jester Radar Gain Toggle
+Jester Radar AUTO Gain Toggle
 
-This mod gives the player the ability to stop Jester from adjusting Radar Gain to allow player gain control. Toggle is available via Jester Wheel.
+This mod gives the player the ability to stop Jester from adjusting Radar Gain to allow player gain control. Toggle is available via Jester Wheel. This is only functional for Pilot button/Key Coarse Gain. Binding a COARSE GAIN Axis makes Auto Gain irrelevant. Pilot Gain Axis gives pilot sole control of GAIN
 
 ### Startup
 -**No INS Alignment Question** You MUST tell Jester to start alignment yourself. There is a keybind for that. He will automatically do a Stored Heading Alignment if available, BATH if not. He will NEVER do a full alignment.
