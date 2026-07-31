@@ -185,6 +185,11 @@ Config.GROUND_CLUTTER_GAIN = 0.5     -- coarse gain used when the search produce
 Config.GAIN_OVERRIDE_EPS     = 0.05    -- how far the knob must sit from Jester's commanded value to count as overridden
 Config.GAIN_OVERRIDE_STRIKES = 4       -- consecutive AdjustGain cycles at a stable foreign value before deferring
 Config.GAIN_OVERRIDE_GRACE   = s(0.5)  -- settle time after a command before a mismatch is judged
+-- Optional spoken callout when Jester defers gain to a manual/axis override. STAGED OFF:
+-- the console/log line always fires; flip this to true once the voice clip exists at
+-- Sounds/Jester/<GAIN_DEFER_PHRASE>*.ogg (e.g. radar/gainmanual1.ogg, ...2, ...3).
+Config.ANNOUNCE_GAIN_DEFER = false
+Config.GAIN_DEFER_PHRASE   = 'radar/gainmanual'
 Config.RANGE_DWELL        = s(15)  -- how long to search each display range before stepping (range-sweep clock)
 -- Descending ladder of the ranges the sweep/gain-hunt run at. The pilot's range is
 -- the sweep ceiling; ranges not listed (5/10 nm) get the backend gain and no sweep.

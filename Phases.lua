@@ -62,6 +62,13 @@ function Phases.DetectGainOverride()
 		Log("Jester Radar | Coarse gain under external (axis/manual) control - deferring; Jester will not drive gain")
 		Config.ConsoleLog(string.format("%.1f GAIN deferred to manual (knob=%.3f, last cmd=%.3f)",
 			Utilities.GetTime().mission_time:ConvertTo(s).value, current, State.gain_last_commanded))
+		-- Optional spoken callout (staged; enable Config.ANNOUNCE_GAIN_DEFER once the clip exists).
+		if Config.ANNOUNCE_GAIN_DEFER then
+			local announce = Task:new()
+			announce:SetPriority(1)
+			announce:Say(Config.GAIN_DEFER_PHRASE)
+			GetJester():AddTask(announce)
+		end
 	end
 end
 
