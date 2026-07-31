@@ -239,7 +239,7 @@ Config.SCAN_ZONE_SEQUENCE_25NM = {
 -- which isn't persisted). Writes to <writedir>/jester_console.log. Truncated once per
 -- Lua session so each flight starts a clean log instead of growing without bound.
 -- Toggle with Config.JESTER_CONSOLE_LOG. Call via Config.ConsoleLog("...").
-Config.JESTER_CONSOLE_LOG = true
+Config.JESTER_CONSOLE_LOG = false
 local function console_log_path()
 	local base
 	pcall(function() if lfs and lfs.writedir then base = lfs.writedir() end end)
