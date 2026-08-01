@@ -68,6 +68,7 @@ local forced_auto_focus_on = false
 -- heartbeat accumulator so we log on every phase change plus at least every 2s.
 local dbg_last_phase = nil
 local dbg_hb = s(0)
+local dbg_last_inhibit = false -- last logged dogfight scan-inhibit state, to log only on change
 
 function Radar.UpdateDiveToss()
 	local move_radar_cursor = GetJester().behaviors[MoveRadarCursor]
@@ -374,7 +375,22 @@ function Radar.Tick()
 	-- DON'T reset, so the picture is preserved and the set keeps sweeping at its last settings.
 	-- An active lock is unaffected: it proceeds to HANDLE_TARGET_LOCKING below and is maintained.
 	local is_locking = State.target_to_lock ~= nil or State.target_currently_locked ~= nil
-	if not is_locking and Radar.ShouldInhibitForDogfight() then
+	local scan_inhibited = (not is_locking) and Radar.ShouldInhibitForDogfight()
+	-- Log only the engage/release transition (silent in flight; enable Config.JESTER_CONSOLE_LOG
+	-- to see it in jester_console.log while testing), with the live G and threat range.
+	if scan_inhibited ~= dbg_last_inhibit then
+		local now = Utilities.GetTime().mission_time:ConvertTo(s).value
+		if scan_inhibited then
+			local g = ObsNumber(GetJester().awareness:GetObservation("g_force")) or 0
+			local ct = GetJester().awareness:GetClosestAirThreat()
+			local rng = ct and ct.polar_ned.length:ConvertTo(NM).value or -1
+			Config.ConsoleLog(string.format("%.1f SCAN INHIBIT engaged - radar frozen (g=%.1f, threat=%.1fnm)", now, g, rng))
+		else
+			Config.ConsoleLog(string.format("%.1f SCAN INHIBIT released - resuming radar", now))
+		end
+		dbg_last_inhibit = scan_inhibited
+	end
+	if scan_inhibited then
 		return
 	end
 
