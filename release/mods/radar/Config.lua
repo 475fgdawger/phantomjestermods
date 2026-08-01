@@ -143,6 +143,17 @@ Config.STALE_LOCK_MAX_AGE = s(3) -- a lock request for a contact not currently p
 Config.GAIN_COARSE_FAR = 0.6 -- Gain setting (coarse knob) for targets far away (> 25nm)
 Config.GAIN_COARSE_CLOSE = 0.5 -- Gain setting (coarse knob) for targets close (<= 25nm)
 
+-- Dogfight scan-inhibit: Jester stops running the radar SEARCH (and freezes it in its last
+-- state) when he's actively in a close, hard-maneuvering fight - i.e. a hostile air threat
+-- within DOGFIGHT_INHIBIT_WVR_DISTANCE AND the jet pulling more than DOGFIGHT_INHIBIT_G. An
+-- active lock is NOT affected (it's maintained). These are RADAR-DEDICATED knobs, separate
+-- from the shared behaviors.Constants.dogfight_distance (used by DogfightAdvisory/Merged) and
+-- from awareness's internal WVR threshold, so tuning them can't move other behaviors. The
+-- threat still comes from omniscient awareness, so the G gate is what confirms "actively
+-- fighting" rather than "enemy merely nearby".
+Config.DOGFIGHT_INHIBIT_WVR_DISTANCE = NM(10) -- hostile air threat must be within this
+Config.DOGFIGHT_INHIBIT_G            = 4.0     -- ...and the jet pulling more than this many G
+
 Config.ARTIFICIAL_TARGET_ID = -1 -- Used if Jester is tracking a target he does not know about. He will try to replace it when the actual target shows up.
 
 -- Nails Search: when a "nails" (airborne RWR emitter) appears in the forward arc

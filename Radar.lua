@@ -12,7 +12,16 @@ local Routines = require('radar.Routines')
 require('radar.UserActions') -- must be included so that its ListenTo are registered
 local MoveRadarCursor = require('radar.MoveRadarCursor')
 local MoveRadarAntenna = require('radar.MoveRadarAntenna')
-local Constants = require('behaviors.Constants')
+
+-- Pulls a plain number out of an observation, whether it's a labeled quantity (has .value,
+-- possibly userdata) or already a raw number. Returns nil if unavailable.
+local function ObsNumber(o)
+	if o == nil then return nil end
+	if type(o) == 'number' then return o end
+	local ok, v = pcall(function() return o.value end)
+	if ok and type(v) == 'number' then return v end
+	return nil
+end
 
 -- Mostly a state-machine that enqueues a single task per :Tick.
 -- General preparation for operating the Radar system and deactivating it while
@@ -228,16 +237,26 @@ function Radar.UpdateTargetHighlight()
 	end
 end
 
+-- True when Jester should suspend the radar SEARCH because he's actively in a close,
+-- hard-maneuvering fight: a hostile air threat within DOGFIGHT_INHIBIT_WVR_DISTANCE and the
+-- jet pulling more than DOGFIGHT_INHIBIT_G. The G gate is the real discriminator - the threat
+-- itself comes from omniscient awareness (SixthSense), so distance alone would trip on an
+-- undetected enemy merely nearby. Used only to freeze the scan; locks are handled separately
+-- and are NOT inhibited (see Radar.Tick).
+function Radar.ShouldInhibitForDogfight()
+	local g = ObsNumber(GetJester().awareness:GetObservation("g_force"))
+	if not g or g <= Config.DOGFIGHT_INHIBIT_G then
+		return false
+	end
+	local closest_threat = GetJester().awareness:GetClosestAirThreat()
+	if not closest_threat then
+		return false
+	end
+	return closest_threat.polar_ned.length:ConvertTo(NM) < Config.DOGFIGHT_INHIBIT_WVR_DISTANCE
+end
+
 function Radar.FindNextPhase()
 	State.task = nil
-
-	--Inhibit regular radar ops when in dogfight.
-	--TODO: Also inhibit if G-locked (cant move arms and brain when too much G)
-	local closest_threat = GetJester().awareness:GetClosestAirThreat() or false
-	local is_dogfight = closest_threat and closest_threat.polar_ned.length:ConvertTo(NM) < Constants.dogfight_distance
-	if is_dogfight then
-		return
-	end
 
 	local spendEnoughTimeInSameZone = State.time_spent_scanning_zone_no_bandits > State.max_scan_time_for_zone_no_bandits
 	if State.current_phase == Config.phase.ADJUST_GAIN and spendEnoughTimeInSameZone then
@@ -346,6 +365,16 @@ function Radar.Tick()
 			-- Radar deselected, abort whatever is going on and reset
 			State.Reset()
 		end
+		return
+	end
+
+	-- Dogfight scan-inhibit: when actively maneuvering (G) against a close (WVR) threat and
+	-- NOT locking/tracking a target, Jester can't run the search - leave the radar exactly as
+	-- it is (last antenna / range / gain), issuing no IFF, no auto-focus, no scan advance, and
+	-- DON'T reset, so the picture is preserved and the set keeps sweeping at its last settings.
+	-- An active lock is unaffected: it proceeds to HANDLE_TARGET_LOCKING below and is maintained.
+	local is_locking = State.target_to_lock ~= nil or State.target_currently_locked ~= nil
+	if not is_locking and Radar.ShouldInhibitForDogfight() then
 		return
 	end
 
