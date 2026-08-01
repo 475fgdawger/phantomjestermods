@@ -12,7 +12,7 @@ local Routines = require('radar.Routines')
 require('radar.UserActions') -- must be included so that its ListenTo are registered
 local MoveRadarCursor = require('radar.MoveRadarCursor')
 local MoveRadarAntenna = require('radar.MoveRadarAntenna')
-local Constants = require('base.Constants')
+local Constants = require('behaviors.Constants')
 
 -- Mostly a state-machine that enqueues a single task per :Tick.
 -- General preparation for operating the Radar system and deactivating it while
