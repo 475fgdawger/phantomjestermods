@@ -392,8 +392,9 @@ function Phases.HandleNailsSearch()
 	return task:Wait(Config.NAILS_SEARCH_DWELL)
 end
 
--- Position of a display range in the descending SEARCH_RANGE_LADDER, or nil if the
--- range isn't part of the sweep (e.g. 5/10 nm).
+-- True (via a non-nil index) if a display range is one of the normal search ranges in
+-- SEARCH_RANGE_LADDER; nil for a non-search range like 5/10 nm. AdjustGain uses this to
+-- decide whether to drive the fixed sky gain or defer to the backend.
 local function ladder_index(range)
 	for i, r in ipairs(Config.SEARCH_RANGE_LADDER) do
 		if r == range then
@@ -403,38 +404,12 @@ local function ladder_index(range)
 	return nil
 end
 
--- The pilot's selected range is the sweep MAX; Jester works down the ladder from
--- there to 25 nm and restarts. Returns the display range to scan at, initialising or
--- clamping the sweep as needed. A non-swept pilot range (5/10 nm) is used directly.
+-- Fixed display range - no range sweep. The search runs at a single range (the pilot's
+-- requested range, default 50 nm); 25 nm is no longer part of the normal pattern. The pilot
+-- can still pick a different range manually and it's honored as-is.
 function Phases.GetSearchRange()
-	local max_idx = ladder_index(State.pilot_requested_range)
-	if not max_idx then
-		State.search_range = nil
-		return State.pilot_requested_range
-	end
-	local cur_idx = State.search_range and ladder_index(State.search_range)
-	if not cur_idx or cur_idx < max_idx then
-		State.search_range = State.pilot_requested_range -- (re)start at the pilot's max range
-	end
+	State.search_range = State.pilot_requested_range
 	return State.search_range
-end
-
--- Step the sweep one range shorter; restart at the pilot's max range past 25 nm.
-function Phases.AdvanceSearchRange()
-	local max_idx = ladder_index(State.pilot_requested_range)
-	if not max_idx then
-		return
-	end
-	local cur_idx = (State.search_range and ladder_index(State.search_range)) or max_idx
-	if cur_idx >= #Config.SEARCH_RANGE_LADDER then
-		State.search_range = State.pilot_requested_range
-	else
-		State.search_range = Config.SEARCH_RANGE_LADDER[cur_idx + 1]
-	end
-	-- Entering the critical 25 nm sweep: require a full bar scan before ranging out.
-	if State.search_range == Config.range.nm_25 then
-		State.nm25_sweep_complete = false
-	end
 end
 
 function Phases.PrepareScanPattern()
@@ -455,34 +430,22 @@ function Phases.PrepareScanPattern()
 	return task
 end
 
--- Build the elevation-zone order for the current situation: a top-down sweep at
--- 25 nm, otherwise the default cycle; with the below-level zones (LOW / SLIGHTLY_BELOW)
--- removed when flying below Config.SKIP_DOWN_BELOW_ALTITUDE (barometric MSL - Jester
--- has no true AGL).
+-- Elevation cycle chosen by own altitude:
+--   * at/below SKIP_DOWN_BELOW_ALTITUDE (5,000 ft): the low-altitude MP pattern -
+--     mostly level with occasional high looks, NO below-level bars (don't scan into the
+--     ground). See Config.SCAN_ZONE_SEQUENCE_LOW.
+--   * above it: the original look-down search (Config.SCAN_ZONE_SEQUENCE_DEFAULT, which
+--     includes the LOW / SLIGHTLY_BELOW bars) so Jester can find bandits below him.
+-- Range is a fixed 50 nm at either altitude (Phases.GetSearchRange); no 25 nm sweep.
+-- NOTE: altitude is barometric (MSL) - Jester has no true AGL.
 local function elevation_zone_sequence()
-	local display_range = State.search_range or State.pilot_requested_range
-	local seq = Config.SCAN_ZONE_SEQUENCE_DEFAULT
-	if display_range == Config.range.nm_25 then
-		seq = Config.SCAN_ZONE_SEQUENCE_25NM
-	end
-
 	local own_altitude = GetJester().awareness:GetObservation("barometric_altitude")
 	local low_threshold = Config.SKIP_DOWN_BELOW_ALTITUDE:ConvertTo(ft).value
 	local is_low = own_altitude and own_altitude:ConvertTo(ft).value <= low_threshold
-	if not is_low then
-		return seq
+	if is_low then
+		return Config.SCAN_ZONE_SEQUENCE_LOW
 	end
-
-	-- At/below the low-altitude threshold: drop every below-CENTER bar so Jester stops
-	-- at CENTER (0 ft) and never scans into the ground.
-	local filtered = {}
-	for _, zone in ipairs(seq) do
-		local is_below_center = zone.is_relative and zone.altitude and zone.altitude:ConvertTo(ft).value < 0
-		if not is_below_center then
-			filtered[#filtered + 1] = zone
-		end
-	end
-	return filtered
+	return Config.SCAN_ZONE_SEQUENCE_DEFAULT
 end
 
 function Phases.ComputeNextScanZone()
@@ -494,9 +457,8 @@ function Phases.ComputeNextScanZone()
 		return Config.scan_zone.TARGET_FOCUS
 	end
 
-	-- Step through the (situation-dependent) elevation sequence, wrapping at the end.
+	-- Step through the elevation sequence, wrapping at the end.
 	local seq = elevation_zone_sequence()
-	local is_25nm = (State.search_range or State.pilot_requested_range) == Config.range.nm_25
 	local idx
 	for i, zone in ipairs(seq) do
 		if State.current_scan_zone == zone then
@@ -506,10 +468,6 @@ function Phases.ComputeNextScanZone()
 	end
 	if not idx then
 		return seq[1] -- not in the current sequence (e.g. sequence just changed): start at top
-	end
-	if is_25nm and idx >= #seq then
-		-- just scanned the last (bottom) bar of the 25 nm sweep: it's now complete
-		State.nm25_sweep_complete = true
 	end
 	return seq[idx % #seq + 1]
 end
@@ -775,25 +733,6 @@ local function is_ground_clutter_search()
 	return mlc:ConvertTo(NM).value <= display_nm
 end
 
--- Range-sweep clock (decoupled from gain): advance the display range after RANGE_DWELL,
--- holding at 25 nm until the elevation bar scan has finished.
-function Phases.TickRangeDwell()
-	local now = Utilities.GetTime().mission_time
-	if State.range_dwell_start == nil then
-		State.range_dwell_start = now
-		return
-	end
-	if (now - State.range_dwell_start) < Config.RANGE_DWELL then
-		return
-	end
-	local at_25nm = (State.search_range or State.pilot_requested_range) == Config.range.nm_25
-	if at_25nm and not State.nm25_sweep_complete then
-		return -- hold at 25 nm until the bar scan completes
-	end
-	Phases.AdvanceSearchRange()
-	State.range_dwell_start = now
-end
-
 function Phases.AdjustGain()
 	if State.pilot_requested_scan_zone == State.current_scan_zone then
 		State.pilot_requested_scan_zone = nil
@@ -826,9 +765,6 @@ function Phases.AdjustGain()
 		RadarAdjustGain()
 		return nil
 	end
-
-	-- Step the display range on the dwell timer (independent of gain).
-	Phases.TickRangeDwell()
 
 	-- Fixed sky gain for sky searches; fixed lower gain when the search produces ground
 	-- clutter. Jester can't measure clutter, so both are set values (tune in Config).

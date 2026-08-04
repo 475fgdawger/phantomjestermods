@@ -49,9 +49,7 @@ State.nails_search_start = nil -- mission_time the directed nails-search began (
 State.nails_search_sweep_up = true -- elevation sweep direction toggle, flipped each dwell step
 State.nails_search_scans_completed = 0 -- count of full up+down elevation scans done this search; the timeout won't fire until this is >= 1
 
-State.range_dwell_start = nil -- mission_time the current display range began (range-sweep clock)
-State.search_range = nil -- current display range within the normal-search range sweep (nil = follow pilot_requested_range)
-State.nm25_sweep_complete = false -- whether the 25 nm elevation bar scan has finished all bars; gates ranging out of 25 nm
+State.search_range = nil -- current display range (set to pilot_requested_range by Phases.GetSearchRange; no sweep)
 
 State.last_iff_timestamp = s(0) -- timestamp the last IFF was executed, in order to not spam it
 
@@ -104,9 +102,7 @@ function State.Reset()
 	State.nails_search_start = nil
 	State.nails_search_sweep_up = true
 	State.nails_search_scans_completed = 0
-	State.range_dwell_start = nil
 	State.search_range = nil
-	State.nm25_sweep_complete = false
 
 	State.time_spent_trying_to_lock_bandit = s(0)
 	State.wrong_lock_attempts = 0

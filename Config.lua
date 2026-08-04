@@ -201,9 +201,9 @@ Config.GAIN_OVERRIDE_GRACE   = s(0.5)  -- settle time after a command before a m
 -- Sounds/Jester/<GAIN_DEFER_PHRASE>*.ogg (e.g. radar/gainmanual1.ogg, ...2, ...3).
 Config.ANNOUNCE_GAIN_DEFER = false
 Config.GAIN_DEFER_PHRASE   = 'radar/gainmanual'
-Config.RANGE_DWELL        = s(15)  -- how long to search each display range before stepping (range-sweep clock)
--- Descending ladder of the ranges the sweep/gain-hunt run at. The pilot's range is
--- the sweep ceiling; ranges not listed (5/10 nm) get the backend gain and no sweep.
+-- The set of normal search ranges. Used only by Phases.ladder_index to tell a search
+-- range from a non-search close range (5/10 nm) for the gain path - there is no range
+-- sweep; the display range is fixed (Phases.GetSearchRange).
 Config.SEARCH_RANGE_LADDER = {
 	Config.range.nm_200,
 	Config.range.nm_100,
@@ -211,17 +211,16 @@ Config.SEARCH_RANGE_LADDER = {
 	Config.range.nm_25,
 }
 
--- Elevation scan customization (see Phases.ComputeNextScanZone).
--- Jester has no true AGL / radar-altimeter reading, only barometric (MSL) altitude,
--- so this threshold is MSL. Below it he skips the below-level scan zones so he does
--- not waste sweeps looking into the ground.
+-- Elevation scan customization (see Phases.elevation_zone_sequence).
+-- Jester has no true AGL / radar-altimeter reading, only barometric (MSL) altitude, so this
+-- threshold is MSL. At/below it he runs the low-altitude pattern (level + occasional high, no
+-- look-down); above it, the original look-down search.
 Config.SKIP_DOWN_BELOW_ALTITUDE = ft(5000)
 
--- Elevation zone order. SCAN_ZONE_SEQUENCE_DEFAULT is the normal cycle (used at
--- 50/100/200 nm). At 25 nm Jester instead runs SCAN_ZONE_SEQUENCE_25NM: a manual
--- top-down bar scan from +30,000 ft down to -5,000 ft, referenced at 30 nm. In both,
--- the below-CENTER bars are dropped when flying at/below SKIP_DOWN_BELOW_ALTITUDE, so
--- he stops at CENTER (0 ft) and never scans into the ground.
+-- Above SKIP_DOWN_BELOW_ALTITUDE, Jester runs SCAN_ZONE_SEQUENCE_DEFAULT: the original
+-- look-down cycle (includes the LOW / SLIGHTLY_BELOW below-level bars) so he can find
+-- bandits beneath him. At/below that altitude he runs SCAN_ZONE_SEQUENCE_LOW instead (no
+-- look-down). All referenced at 30 nm; see Phases.elevation_zone_sequence.
 Config.SCAN_ZONE_SEQUENCE_DEFAULT = {
 	Config.scan_zone.CENTER_DOWNSTREAM_1,
 	Config.scan_zone.CENTER_DOWNSTREAM_2,
@@ -232,18 +231,28 @@ Config.SCAN_ZONE_SEQUENCE_DEFAULT = {
 	Config.scan_zone.SLIGHTLY_BELOW,
 	Config.scan_zone.HIGH,
 }
--- 25 nm manual bar scan: +30,000 ft -> -5,000 ft in 5,000 ft steps (~1.6 deg each at
--- 30 nm), referenced at 30 nm per request. Edit the altitudes/step to taste.
-local nm25_ref = NM(30)
-Config.SCAN_ZONE_SEQUENCE_25NM = {
-	{ name = "25NM_UP_30K",  range = nm25_ref, altitude = ft(30000),  is_relative = true },
-	{ name = "25NM_UP_25K",  range = nm25_ref, altitude = ft(25000),  is_relative = true },
-	{ name = "25NM_UP_20K",  range = nm25_ref, altitude = ft(20000),  is_relative = true },
-	{ name = "25NM_UP_15K",  range = nm25_ref, altitude = ft(15000),  is_relative = true },
-	{ name = "25NM_UP_10K",  range = nm25_ref, altitude = ft(10000),  is_relative = true },
-	{ name = "25NM_UP_5K",   range = nm25_ref, altitude = ft(5000),   is_relative = true },
-	{ name = "25NM_CENTER",  range = nm25_ref, altitude = ft(0),      is_relative = true },
-	{ name = "25NM_DOWN_5K", range = nm25_ref, altitude = ft(-5000),  is_relative = true },
+
+-- Low-altitude multiplayer search pattern (the one Jester actually uses; see
+-- Phases.elevation_zone_sequence). Reflects the common MP reality of most players flying
+-- low: Jester keeps the antenna LEVEL (0 ft) the great majority of the time and only
+-- occasionally looks up, stepping 10k -> 20k -> 30k ft, all referenced at 30 nm. No
+-- below-level bars (player is low) and no 25 nm bar scan. Runs at a fixed display range
+-- (Phases.GetSearchRange, default 50 nm - no range sweep). Each entry must be a distinct
+-- table (the zone cycle matches by reference). Tune the level:high ratio / high steps here.
+local low_ref = NM(30)
+Config.SCAN_ZONE_SEQUENCE_LOW = {
+	{ name = "LEVEL_1",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "LEVEL_2",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "LEVEL_3",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "HIGH_10K",  range = low_ref, altitude = ft(10000), is_relative = true },
+	{ name = "LEVEL_4",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "LEVEL_5",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "LEVEL_6",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "HIGH_20K",  range = low_ref, altitude = ft(20000), is_relative = true },
+	{ name = "LEVEL_7",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "LEVEL_8",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "LEVEL_9",  range = low_ref, altitude = ft(0),     is_relative = true },
+	{ name = "HIGH_30K",  range = low_ref, altitude = ft(30000), is_relative = true },
 }
 
 -- Lightweight file logger (Jester's built-in Log() only reaches the in-sim console,
