@@ -7,6 +7,7 @@ local StressReaction = require('base.StressReaction')
 local Math = require('base.Math')
 local Utilities = require('base.Utilities')
 local RadarState = require('radar.State')
+local WingmanTracker = require('behaviors.WingmanTracker') -- to read the designation state for the wheel
 
 local UpdateJesterWheel = Class(Behavior)
 UpdateJesterWheel.a2g_pave_spike_added = false
@@ -1342,6 +1343,31 @@ function UpdateJesterWheel:UpdateCrewContact()
 	elseif not activate_alignment_option and self.start_alignment_added then
 		Wheel.RemoveItem("Start Alignment", location)
 		self.start_alignment_added = false
+	end
+
+	-- Wingman designation (handled by the WingmanTracker behavior via these events).
+	-- The wheel reflects the current designation state:
+	--   * no wingman  -> "Wingman - Designate" only (action: wingman_designate)
+	--   * designated  -> "Wingman - Find" (action: wingman_find) + "Wingman - Undesignate"
+	local tracker = GetJester().behaviors[WingmanTracker]
+	local has_wingman = tracker ~= nil and tracker.wingman_id ~= nil
+
+	local desired_primary = has_wingman and "Wingman - Find" or "Wingman - Designate"
+	local desired_action  = has_wingman and "wingman_find" or "wingman_designate"
+	if self.wingman_primary_name ~= desired_primary then
+		if self.wingman_primary_name then
+			Wheel.RemoveItem(self.wingman_primary_name, location)
+		end
+		Wheel.AddItem(Wheel.Item:new( { name = desired_primary, action = desired_action, reaction = Wheel.Reaction.CLOSE_REMEMBER } ), location)
+		self.wingman_primary_name = desired_primary
+	end
+
+	if has_wingman and not self.wingman_undesignate_shown then
+		Wheel.AddItem(Wheel.Item:new( { name = "Wingman - Undesignate", action = "wingman_undesignate", reaction = Wheel.Reaction.CLOSE_REMEMBER } ), location)
+		self.wingman_undesignate_shown = true
+	elseif not has_wingman and self.wingman_undesignate_shown then
+		Wheel.RemoveItem("Wingman - Undesignate", location)
+		self.wingman_undesignate_shown = false
 	end
 end
 

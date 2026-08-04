@@ -9,6 +9,7 @@ local Sentence     = require('voice.Sentence')
 local SayTask      = require('tasks.common.SayTask')
 local SayFuel      = require('tasks.fuel.SayFuelQuantity')
 local Constants    = require('behaviors.Constants')
+local Labels       = require('base.Labels') -- contact classification (hostile gate for helicopters)
 
 local DogfightAdvisory = Class(Behavior)
 
@@ -22,6 +23,7 @@ local REPORT_INTERVAL       = s(4)
 local FRIENDLY_WEZ_HALF_ARC = deg(35)
 local HIGH_LOW_THRESHOLD    = deg(10)
 local FALLBACK_TYPE_PHRASE  = 'contacts_iff/bogey'
+local HELICOPTER_PHRASE     = 'dawger/Helo' -- enemy rotorcraft (no dedicated aircraft phrase exists)
 -- A group's call is only repeated once its range OR bearing has moved at least this
 -- much since it was last announced (also re-called on a high/low or count change).
 -- Raise these to make Jester quieter for a steady contact.
@@ -47,6 +49,14 @@ end
 -- Phrase builders ------------------------------------------------------------
 
 local function TypePhrase(contact)
+    -- Enemy helicopters have no dedicated aircraft phrase, so Jester would fall back to
+    -- 'bogey'. Call an enemy rotorcraft 'helicopter' (dawger clip) instead. Only for
+    -- hostiles: friendly rotorcraft keep the normal handling.
+    -- The senses don't tag rotorcraft with a 'helicopter' label, so match the type string;
+    -- gate on the (reliably set) 'hostile' label so only enemy helicopters are called out.
+    if DbaseUtils.IsHelicopterType(contact.type) and contact.CanBe and contact:CanBe(Labels.hostile) then
+        return HELICOPTER_PHRASE
+    end
     local type_string = tostring(contact.type)
     local data = DbaseUtils.GetAircraftPhrase(type_string)
     if data then

@@ -231,6 +231,28 @@ function DbaseUtils.GetAircraftPhrase(aircraft)
 	end
 end
 
+-- Helicopter DCS unit-type strings (lowercased). The senses do NOT tag contacts with a
+-- 'helicopter'/'airplane' label (confirmed empirically: a Mi-24P reports only
+-- aircraft/hostile/airborne), so rotorcraft can only be recognized by their type string.
+-- The exact type string is what appears in a contact's `.type`; add any that slip through.
+DbaseUtils.helicopter_types = {
+	["mi-24p"] = true, ["mi-24v"] = true,
+	["mi-8mt"] = true, ["mi-8mtv2"] = true,
+	["mi-26"] = true, ["mi-28n"] = true,
+	["ka-50"] = true, ["ka-50_3"] = true, ["ka-27"] = true,
+	["ah-64a"] = true, ["ah-64d"] = true, ["ah-64d_blk_ii"] = true, ["ah-1w"] = true,
+	["uh-1h"] = true, ["uh-60a"] = true, ["oh-58d"] = true, ["sh-60b"] = true,
+	["ch-47d"] = true, ["ch-47fbl1"] = true, ["ch-53e"] = true,
+	["sa342m"] = true, ["sa342l"] = true, ["sa342mistral"] = true, ["sa342minigun"] = true,
+}
+
+function DbaseUtils.IsHelicopterType(type_string)
+	if type(type_string) ~= "string" then
+		return false
+	end
+	return DbaseUtils.helicopter_types[string.lower(type_string)] == true
+end
+
 local digit_to_word_map = {
 	['0'] = 'zero',
 	['1'] = 'one',
