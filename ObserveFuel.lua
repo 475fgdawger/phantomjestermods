@@ -10,8 +10,11 @@ local default_fuel_quantity = lb(12150)
 local default_interval = min(1) -- base poll; sped up to ~5s in afterburner (see AB_GAIN)
 local AB_GAIN = 12             -- min(1) base / 12 ≈ 5s poll while in afterburner
 local out_of_fuel = lb(10)
-local bingo_fuel = lb(3000) -- announce "Bingo"
-local joker_fuel = lb(5000) -- announce "Joker"
+local bingo_fuel = lb(3000) -- announce "Bingo" (kept as the nominal value; may become user-configurable)
+local joker_fuel = lb(5000) -- announce "Joker" (kept as the nominal value; may become user-configurable)
+local NON_AB_LEAD = lb(175)  -- outside afterburner the poll is only ~1/min at ~350 lb/min mil burn, so
+                             -- trigger this much early (~half a poll) to center the call on the nominal
+                             -- value. No lead in afterburner (the ~5s poll is already tight).
 local fuel_gauge = '/Pilot Fuel Quantity Indicator/Fuel Meter'
 
 -- Own-ship afterburner via the 'Afterburner' observation (a boolean; the same signal
@@ -66,10 +69,16 @@ function ObserveFuel:Constructor()
 		local awareness = GetJester() and GetJester().awareness or nil
 		local ok_cmb, in_combat = pcall(function() return awareness:GetInCombatOrDanger() end)
 		in_combat = (ok_cmb and in_combat) and true or false
+		local ab = in_afterburner()
+
+		-- Detection thresholds: nominal value plus a lead when not in afterburner (see NON_AB_LEAD).
+		local lead = ab and lb(0) or NON_AB_LEAD
+		local bingo_threshold = bingo_fuel + lead
+		local joker_threshold = joker_fuel + lead
 
 		-- Proximity inhibits (tanker/airfield within 7 nm) are BYPASSED when in combat or
 		-- afterburner - in those cases the fuel state is called regardless of position.
-		if not (in_afterburner() or in_combat) then
+		if not (ab or in_combat) then
 			local tanker_nm = nil
 			local closest_tanker = awareness and awareness:GetClosestFriendlyTanker() or false
 			if closest_tanker and closest_tanker.polar_ned and closest_tanker.polar_ned.length then
@@ -90,12 +99,12 @@ function ObserveFuel:Constructor()
 			end
 		end
 
-		if (self.fuel_estimate < bingo_fuel and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
+		if (self.fuel_estimate < bingo_threshold and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
 			self.estimates_below_bingo = true
 			local task = SayTask:new('misc/bingo')
 			GetJester():AddTask(task)
 			tasks[#tasks + 1] = task
-		elseif (self.fuel_estimate < joker_fuel and not self.estimates_below_joker and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
+		elseif (self.fuel_estimate < joker_threshold and not self.estimates_below_joker and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
 			self.estimates_below_joker = true
 			local task = SayTask:new('misc/joker')
 			GetJester():AddTask(task)
