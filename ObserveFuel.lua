@@ -5,15 +5,31 @@ local Behavior = require('base.Behavior')
 local Urge = require('base.Urge')
 local StressReaction = require('base.StressReaction')
 local SayTask = require('tasks.common.SayTask')
-local CheckFuelDialog = require('tasks.fuel.CheckFuelDialog')
 
 local default_fuel_quantity = lb(12150)
-local default_interval = min(12)
+local default_interval = min(1) -- base poll; sped up to ~5s in afterburner (see AB_GAIN)
+local AB_GAIN = 12             -- min(1) base / 12 ≈ 5s poll while in afterburner
 local out_of_fuel = lb(10)
-local bingo_fuel = lb(4000) -- TODO Make configurable
-local joker_fuel = bingo_fuel + lb(2000) -- TODO Make configurable
+local bingo_fuel = lb(3000) -- announce "Bingo"
+local joker_fuel = lb(5000) -- announce "Joker"
 local fuel_gauge = '/Pilot Fuel Quantity Indicator/Fuel Meter'
-local fuel_error_dice = Dice.new(-2000, 2000)
+
+-- Own-ship afterburner via the 'Afterburner' observation (a boolean; the same signal
+-- DogfightAdvisory uses). Resolved defensively in case it is ever a labeled value.
+local function in_afterburner()
+	local aw = GetJester() and GetJester().awareness
+	if not aw then return false end
+	local ok, v = pcall(function() return aw:GetObservation('Afterburner') end)
+	if not ok then return false end
+	local t = type(v)
+	if t == 'boolean' then return v end
+	if t == 'number' then return v ~= 0 end
+	if t == 'table' or t == 'userdata' then
+		local ok2, inner = pcall(function() return v.value end)
+		return (ok2 and inner) and true or false
+	end
+	return v and true or false
+end
 
 local ObserveFuel = Class(Behavior)
 ObserveFuel.fuel_estimate = default_fuel_quantity
@@ -37,14 +53,9 @@ function ObserveFuel:Constructor()
 
 	local check_gauge = function()
 		local tasks = {}
-		-- WSO can not see the fuel gauge, but based on their experience they can roughly estimate it.
-		-- We mock that by just using the actual value and adding a random error.
 		local actual_fuel_quantity = GetTotalFuelQuantity()
-		self.fuel_estimate = actual_fuel_quantity --[[dawger + lb(fuel_error_dice:Roll())]]
+		self.fuel_estimate = actual_fuel_quantity -- exact gauge reading (no error applied)
 
-		Log("Fuel estimate: " .. tostring(self.fuel_estimate.value))
-
-		-- Bingo/Joker dialogs
 		if (actual_fuel_quantity < out_of_fuel and not self.knows_out_of_fuel) then
 			self.knows_out_of_fuel = true
 			local task = SayTask:new('misc/outoffuel')
@@ -52,34 +63,43 @@ function ObserveFuel:Constructor()
 			tasks[#tasks + 1] = task
 		end
 
-		--Inhibit when in combat or near a friendly tanker.
 		local awareness = GetJester() and GetJester().awareness or nil
-		local closest_tanker = awareness and awareness:GetClosestFriendlyTanker() or false
-		local distance_to_closest_friendly_airfield = awareness:GetDistanceToClosestFriendlyAirfield()
+		local ok_cmb, in_combat = pcall(function() return awareness:GetInCombatOrDanger() end)
+		in_combat = (ok_cmb and in_combat) and true or false
 
-		if closest_tanker and closest_tanker.polar_ned and closest_tanker.polar_ned.length then
-			local dist_to_tanker = closest_tanker.polar_ned.length:ConvertTo(NM)
-			if dist_to_tanker and dist_to_tanker < NM(7) then
+		-- Proximity inhibits (tanker/airfield within 7 nm) are BYPASSED when in combat or
+		-- afterburner - in those cases the fuel state is called regardless of position.
+		if not (in_afterburner() or in_combat) then
+			local tanker_nm = nil
+			local closest_tanker = awareness and awareness:GetClosestFriendlyTanker() or false
+			if closest_tanker and closest_tanker.polar_ned and closest_tanker.polar_ned.length then
+				local ok, v = pcall(function() return closest_tanker.polar_ned.length:ConvertTo(NM).value end)
+				if ok then tanker_nm = v end
+			end
+			if tanker_nm ~= nil and tanker_nm < 7 then
+				return tasks
+			end
+
+			-- If the airfield distance can't be determined, do NOT inhibit (an unknown/nil
+			-- must not silence fuel calls).
+			local airfield_nm = nil
+			local ok_af, af = pcall(function() return awareness:GetDistanceToClosestFriendlyAirfield():ConvertTo(NM).value end)
+			if ok_af then airfield_nm = af end
+			if airfield_nm ~= nil and airfield_nm < 7 then
 				return tasks
 			end
 		end
 
-		if distance_to_closest_friendly_airfield < NM(7) then
-			return tasks
-		end
-
-		if not GetJester().awareness:GetInCombatOrDanger() then
-			if (self.fuel_estimate < bingo_fuel and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
-				self.estimates_below_bingo = true
-				local task = CheckFuelDialog:new()
-				GetJester():AddTask(task)
-				tasks[#tasks + 1] = task
-			elseif (self.fuel_estimate < joker_fuel and not self.estimates_below_joker and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
-				self.estimates_below_joker = true
-				local task = CheckFuelDialog:new()
-				GetJester():AddTask(task)
-				tasks[#tasks + 1] = task
-			end
+		if (self.fuel_estimate < bingo_fuel and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
+			self.estimates_below_bingo = true
+			local task = SayTask:new('misc/bingo')
+			GetJester():AddTask(task)
+			tasks[#tasks + 1] = task
+		elseif (self.fuel_estimate < joker_fuel and not self.estimates_below_joker and not self.estimates_below_bingo and not self.knows_out_of_fuel) then
+			self.estimates_below_joker = true
+			local task = SayTask:new('misc/joker')
+			GetJester():AddTask(task)
+			tasks[#tasks + 1] = task
 		end
 		return tasks
 	end
@@ -94,21 +114,9 @@ end
 
 function ObserveFuel:Tick()
 	if self.check_urge then
-		if self.knows_out_of_fuel then
-			-- TODO Ejection tolerance
-			self.check_urge:SetStressReaction(StressReaction.obsession)
-			self.check_urge:SetGainRateMultiplier(5)
-		elseif self.estimates_below_bingo then
-			self.check_urge:SetStressReaction(StressReaction.obsession)
-			self.check_urge:SetGainRateMultiplier(5)
-		elseif self.estimates_below_joker then
-			self.check_urge:SetStressReaction(StressReaction.fixation)
-			self.check_urge:SetGainRateMultiplier(2)
-		else
-			self.check_urge:SetStressReaction(StressReaction.ignorance)
-			self.check_urge:SetGainRateMultiplier(1)
-		end
-
+		-- Poll rate: 1 min normally, ~5s in afterburner.
+		self.check_urge:SetStressReaction(StressReaction.ignorance)
+		self.check_urge:SetGainRateMultiplier(in_afterburner() and AB_GAIN or 1)
 		self.check_urge:Tick()
 	end
 end
